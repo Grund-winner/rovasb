@@ -1,0 +1,16 @@
+# Protéger les fichiers sensibles - personne ne peut les lire
+<FilesMatch "\.(db|json|php|log)$">
+    # Autoriser PHP pour le fonctionnement du bot
+    <FilesMatch "^(Bot|config|index|admin|users|broadcast|broadcast_worker|Rovaspredict|logout)\.php$">
+        Require all granted
+    </FilesMatch>
+    # Bloquer l'accès direct aux fichiers .db et .json
+    <FilesMatch "\.(db|json)$">
+        Require all denied
+    </FilesMatch>
+</FilesMatch>
+
+# Autoriser PHP partout
+<Files "*.php">
+    Require all granted
+</Files>
