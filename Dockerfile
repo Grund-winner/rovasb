@@ -1,13 +1,17 @@
 FROM php:8.1-apache
 
-# Install required system packages and PHP extensions
+# Install required packages via apt
 RUN apt-get update && apt-get install -y \
     libsqlite3-dev \
+    sqlite3 \
     unzip \
     curl \
-    && docker-php-ext-install sqlite3 pdo_sqlite \
-    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Install PHP SQLite extensions from source
+RUN docker-php-source extract \
+    && docker-php-ext-install -j$(nproc) pdo_sqlite sqlite3 \
+    && docker-php-source delete
 
 # Enable mod_rewrite for .htaccess
 RUN a2enmod rewrite
