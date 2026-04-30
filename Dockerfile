@@ -5,12 +5,7 @@ RUN apt-get update && apt-get install -y \
     libsqlite3-dev \
     unzip \
     curl \
-    libpng-dev \
-    libjpeg-dev \
-    libfreetype6-dev \
     && docker-php-ext-install sqlite3 pdo_sqlite \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install gd \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
