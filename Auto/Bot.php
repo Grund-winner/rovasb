@@ -233,7 +233,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
             
             $keyboard = [
                 'inline_keyboard' => [
-                    [['text' => "💰 Deposit", 'url' => "https://1wyvrz.life/?open=register&p=".P_PARAM."&sub1=$tgid"]],
+                    [['text' => "💰 Deposit", 'url' => "https://one-vv908.com/?open=register&p=583j&sub1=$tgid"]],
                     [['text' => "⬅️ Back to Main Menu", 'callback_data' => "main"]]
                 ]
             ];
@@ -526,7 +526,7 @@ function handleRegistration($chatId, $userId) {
                 [
                     [
                         'text' => "📱 🔶 Register",
-                        'url'  => "https://1wyvrz.life/?open=register&p=" . P_PARAM . "&sub1=$userId"
+                        'url'  => "https://one-vv908.com/?open=register&p=583j&sub1=$userId"
                     ]
                 ],
                 [
@@ -554,7 +554,7 @@ function handleRegistration($chatId, $userId) {
                 [
                     [
                         'text' => "💰 Deposit",
-                        'url'  => "https://1wtsaw.life/casino/list?open=deposit&p=" . P_PARAM . "&sub1=$userId"
+                        'url'  => "https://one-vv908.com/?open=deposit&p=583j&sub1=$userId"
                     ]
                 ],
                 [
