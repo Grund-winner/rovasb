@@ -1,6 +1,6 @@
 FROM debian:bookworm-slim
 
-# Install Apache, PHP 8.2 and all required extensions from Debian packages
+# Install Apache, PHP 8.2 and required extensions from Debian packages
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     apache2 \
@@ -9,8 +9,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     php8.2-mbstring \
     php8.2-curl \
     php8.2-xml \
-    php8.2-json \
-    php8.2-session \
     libapache2-mod-php8.2 \
     sqlite3 \
     unzip \
