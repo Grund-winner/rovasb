@@ -1,10 +1,6 @@
 <?php
 require_once 'config.php';
 
-// MODIFIE ICI : URL de ton nouveau site web (apres hebergement)
-// Exemple: 'https://tonsite.infinityfree.com/Auto/rovas/rovassoft-main/'
-define('WEB_APP_URL', 'https://rovasb-app.onrender.com/Auto/rovas/rovassoft-main/');
-
 // Initialize SQLite database
 @mkdir(__DIR__ . '/data', 0777, true);
 $db = new SQLite3(DB_PATH);
