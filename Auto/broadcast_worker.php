@@ -6,9 +6,9 @@ if (!isset($_SESSION['admin_logged_in'])) {
 
 header('Content-Type: application/json');
 
-$db = new SQLite3('bot.db');
+$db = new SQLite3(__DIR__ . '/data/bot.db');
 // MODIFIE ICI : utilise le MEME token que dans config.php (Bot 1)
-$BOT_TOKEN = "COLLE_TON_NOUVEAU_TOKEN_BOT1_ICI";
+$BOT_TOKEN = "8436757891:AAFP1o04hTD5ka7NaWRGUOlBR-kiHYF1UMY";
 define("BATCH_SIZE", 30);
 
 $type    = $_POST['type'] ?? 'text';

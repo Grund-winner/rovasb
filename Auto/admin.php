@@ -9,7 +9,8 @@ if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== tru
 // dashboard.php
 
 // Connect DB
-$db = new SQLite3("bot.db");
+@mkdir(__DIR__ . '/data', 0777, true);
+$db = new SQLite3(__DIR__ . "/data/bot.db");
 
 // Get stats
 $totalUsers = $db->querySingle("SELECT COUNT(*) FROM users");
