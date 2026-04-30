@@ -1,12 +1,14 @@
 FROM php:8.1-apache
 
-# Install SQLite development library
+# Install SQLite3 development library
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install PDO and SQLite extensions
-RUN docker-php-ext-install pdo pdo_sqlite sqlite3
+# Install PHP extensions one by one to isolate issues
+RUN docker-php-ext-install pdo
+RUN docker-php-ext-install pdo_sqlite
+RUN docker-php-ext-install sqlite3
 
 # Enable Apache mod_rewrite
 RUN a2enmod rewrite
