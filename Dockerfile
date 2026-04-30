@@ -5,10 +5,13 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install PHP extensions one by one to isolate issues
-RUN docker-php-ext-install pdo
-RUN docker-php-ext-install pdo_sqlite
-RUN docker-php-ext-install sqlite3
+# Install PDO + SQLite via PDO (works reliably)
+RUN docker-php-ext-install pdo pdo_sqlite
+
+# Install sqlite3 extension via PECL as fallback
+RUN pecl install sqlite3 \
+    && docker-php-ext-enable sqlite3 \
+    || echo "SQLite3 extension install skipped"
 
 # Enable Apache mod_rewrite
 RUN a2enmod rewrite
