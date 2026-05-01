@@ -109,6 +109,28 @@ function sendMessage($chatId, $text, $replyMarkup = null, $parseMode = null) {
     return telegramRequest('sendMessage', $data);
 }
 
+function sendVideo($chatId, $videoPath, $caption = null, $replyMarkup = null, $parseMode = null) {
+    $data = [
+        'chat_id' => $chatId,
+        'video' => new CURLFile($videoPath)
+    ];
+    if ($caption) $data['caption'] = $caption;
+    if ($replyMarkup) $data['reply_markup'] = json_encode($replyMarkup);
+    if ($parseMode) $data['parse_mode'] = $parseMode;
+    return telegramRequest('sendVideo', $data);
+}
+
+function sendVideoByUrl($chatId, $videoUrl, $caption = null, $replyMarkup = null, $parseMode = null) {
+    $data = [
+        'chat_id' => $chatId,
+        'video' => $videoUrl
+    ];
+    if ($caption) $data['caption'] = $caption;
+    if ($replyMarkup) $data['reply_markup'] = json_encode($replyMarkup);
+    if ($parseMode) $data['parse_mode'] = $parseMode;
+    return telegramRequest('sendVideo', $data);
+}
+
 function sendPhoto($chatId, $photo, $caption = null, $replyMarkup = null, $parseMode = null) {
     $data = [
         'chat_id' => $chatId,
@@ -411,7 +433,9 @@ elseif (isset($update['callback_query'])) {
                 $lang = getUserData($userId, 'language') ?: 'en';
                 $text = $instructions_translations[$lang] ?? $instructions_translations['en'];
                 $keyboard = ['inline_keyboard' => [[['text' => "🔙 Back", 'callback_data' => "main"]]]];
-                sendMessage($chatId, $text, $keyboard);
+                // Send instruction video (FR or other languages)
+                $videoPath = ($lang === 'fr') ? __DIR__ . '/video/fr_inscription.mp4' : __DIR__ . '/video/other_inscription.mp4';
+                sendVideo($chatId, $videoPath, $text, $keyboard);
                 break;
 
             case 'main':
@@ -506,7 +530,9 @@ function handleRegistration($chatId, $userId) {
             ]
         ];
         $text = $step1_texts[$lang] ?? $step1_texts['en'];
-        sendPhoto($chatId, "https://t.me/photoszr/10", $text, $keyboard, 'HTML');
+        // Send instruction video (FR or other languages)
+        $videoPath = ($lang === 'fr') ? __DIR__ . '/video/fr_inscription.mp4' : __DIR__ . '/video/other_inscription.mp4';
+        sendVideo($chatId, $videoPath, $text, $keyboard, 'HTML');
     }
     elseif ($isDeposit !== 'yes') {
         $keyboard = [
@@ -516,7 +542,9 @@ function handleRegistration($chatId, $userId) {
             ]
         ];
         $text = $step2_texts[$lang] ?? $step2_texts['en'];
-        sendPhoto($chatId, "https://i.ibb.co/zWgnCxLB/IMG-20250812-102227-999.jpg", $text, $keyboard, 'HTML');
+        // Send deposit video (FR or other languages)
+        $videoPath = ($lang === 'fr') ? __DIR__ . '/video/fr_depot.mp4' : __DIR__ . '/video/other_depot.mp4';
+        sendVideo($chatId, $videoPath, $text, $keyboard, 'HTML');
     }
     else {
         handleAccountStatus($chatId, $userId);
