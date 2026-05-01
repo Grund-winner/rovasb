@@ -4,6 +4,25 @@ require_once __DIR__ . '/config.php';
 
 $db = getDB();
 
+// Create tables if not exist
+$db->exec("CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    telegram_id BIGINT,
+    username TEXT,
+    first_name TEXT,
+    last_name TEXT,
+    one_win_user_id TEXT,
+    is_registered BOOLEAN DEFAULT FALSE,
+    is_deposited BOOLEAN DEFAULT FALSE,
+    deposit_amount NUMERIC DEFAULT 0,
+    language TEXT DEFAULT 'en',
+    last_message_id INTEGER,
+    registered_at TIMESTAMPTZ,
+    deposited_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+)");
+
 // Admin authentication
 if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true) {
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {

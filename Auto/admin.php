@@ -10,13 +10,41 @@ require_once 'config.php';
 
 $db = getDB();
 
+// Create tables if not exist
+$db->exec("CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    telegram_id BIGINT,
+    username TEXT,
+    first_name TEXT,
+    last_name TEXT,
+    one_win_user_id TEXT,
+    is_registered BOOLEAN DEFAULT FALSE,
+    is_deposited BOOLEAN DEFAULT FALSE,
+    deposit_amount NUMERIC DEFAULT 0,
+    language TEXT DEFAULT 'en',
+    last_message_id INTEGER,
+    registered_at TIMESTAMPTZ,
+    deposited_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+)");
+
 // Get stats
-$totalUsers = $db->querySingle("SELECT COUNT(*) FROM users");
-$totalRegistered = $db->querySingle("SELECT COUNT(*) FROM users WHERE is_registered = TRUE");
+$totalUsers = $db->query("SELECT COUNT(*) FROM users")->fetchColumn();
+$totalUsers = $totalUsers ? (int)$totalUsers : 0;
+
+$totalRegistered = $db->query("SELECT COUNT(*) FROM users WHERE is_registered = TRUE")->fetchColumn();
+$totalRegistered = $totalRegistered ? (int)$totalRegistered : 0;
+
 $totalUnregistered = $totalUsers - $totalRegistered;
-$totalDeposited = $db->querySingle("SELECT COUNT(*) FROM users WHERE is_deposited = TRUE");
+
+$totalDeposited = $db->query("SELECT COUNT(*) FROM users WHERE is_deposited = TRUE")->fetchColumn();
+$totalDeposited = $totalDeposited ? (int)$totalDeposited : 0;
+
 $totalUndeposited = $totalUsers - $totalDeposited;
-$totalDepositAmount = $db->querySingle("SELECT COALESCE(SUM(deposit_amount), 0) FROM users WHERE is_deposited = TRUE");
+
+$totalDepositAmount = $db->query("SELECT COALESCE(SUM(deposit_amount), 0) FROM users WHERE is_deposited = TRUE")->fetchColumn();
+$totalDepositAmount = $totalDepositAmount ? (float)$totalDepositAmount : 0;
 ?>
 <!DOCTYPE html>
 <html lang="en">
