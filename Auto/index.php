@@ -11,7 +11,7 @@ if (!empty($_SESSION['admin_logged_in'])) {
 // MODIFIE ICI : ton nouveau nom d'utilisateur admin
 $ADMIN_USER = "rovas";
 // MODIFIE ICI : ton nouveau mot de passe admin (fort et secret !)
-$ADMIN_PASS = "MODIFIE_CE_MOT_DE_PASSE";
+$ADMIN_PASS = "Patrick2026@####";
 
 $error = "";
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
