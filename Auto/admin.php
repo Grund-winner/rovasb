@@ -12,6 +12,18 @@ if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== tru
 @mkdir(__DIR__ . '/data', 0777, true);
 $db = new SQLite3(__DIR__ . "/data/bot.db");
 
+// Create users table if not exists
+$db->exec("CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY,
+    language TEXT DEFAULT 'en',
+    isregistered TEXT DEFAULT 'no',
+    isdeposit TEXT DEFAULT 'no',
+    deposit_amount TEXT DEFAULT '0',
+    deposit_transactionid TEXT DEFAULT '',
+    country TEXT DEFAULT 'fr',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)");
+
 // Get stats
 $totalUsers = $db->querySingle("SELECT COUNT(*) FROM users");
 $totalRegistered = $db->querySingle("SELECT COUNT(*) FROM users WHERE isregistered='yes'");
