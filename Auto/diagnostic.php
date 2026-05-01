@@ -101,11 +101,11 @@ function checkDatabase() {
         
         // Get stats
         $totalUsers = (int)$db->query("SELECT COUNT(*) FROM users")->fetchColumn();
-        $registered = (int)$db->query("SELECT COUNT(*) FROM users WHERE registered = 1")->fetchColumn();
-        $deposited = (int)$db->query("SELECT COUNT(*) FROM users WHERE deposited = 1")->fetchColumn();
-        $totalDeposits = (float)$db->query("SELECT COALESCE(SUM(amount), 0) FROM deposits")->fetchColumn();
-        $todayUsers = (int)$db->query("SELECT COUNT(*) FROM users WHERE DATE(created_at) = CURRENT_DATE")->fetchColumn();
-        $todayDeposits = (float)$db->query("SELECT COALESCE(SUM(amount), 0) FROM deposits WHERE DATE(created_at) = CURRENT_DATE")->fetchColumn();
+        $registered = (int)$db->query("SELECT COUNT(*) FROM users WHERE is_registered = 1")->fetchColumn();
+        $deposited = (int)$db->query("SELECT COUNT(*) FROM users WHERE is_deposited = TRUE")->fetchColumn();
+        $totalDeposits = (float)$db->query("SELECT COALESCE(SUM(deposit_amount), 0) FROM users WHERE is_deposited = TRUE")->fetchColumn();
+        $todayUsers = (int)$db->query("SELECT COUNT(*) FROM users WHERE DATE(updated_at) = CURRENT_DATE")->fetchColumn();
+        $todayDeposits = (float)$db->query("SELECT COALESCE(SUM(deposit_amount), 0) FROM users WHERE is_deposited = TRUE AND DATE(deposited_at) = CURRENT_DATE")->fetchColumn();
         
         // DB size
         $dbSize = (int)$db->query("SELECT pg_database_size('" . DB_NAME . "')")->fetchColumn();
@@ -116,14 +116,13 @@ function checkDatabase() {
         
         // Table sizes
         $usersSize = (int)$db->query("SELECT pg_total_relation_size('users')")->fetchColumn();
-        $depositsSize = (int)$db->query("SELECT pg_total_relation_size('deposits')")->fetchColumn();
         
         return [
             'status' => 'online',
             'latency' => $latency,
             'stats' => [
                 'total_users' => $totalUsers,
-                'registered' => $registered,
+                'is_registered' => $registered,
                 'deposited' => $deposited,
                 'total_deposits' => $totalDeposits,
                 'today_users' => $todayUsers,
@@ -131,7 +130,7 @@ function checkDatabase() {
                 'db_size_mb' => $dbSizeMB,
                 'active_connections' => $activeConns,
                 'users_table_size' => round($usersSize / 1024, 1),
-                'deposits_table_size' => round($depositsSize / 1024, 1)
+                'deposits_table_size' => 0
             ]
         ];
     } catch (Exception $e) {
@@ -631,14 +630,14 @@ if (!in_array($activeTab, $validTabs)) $activeTab = 'overview';
                     <div class="stat-trend trend-up">+<?= $s['today_users'] ?> aujourd'hui</div>
                 </div>
                 <div class="stat-card glass-sm">
-                    <div class="stat-value"><?= number_format($s['registered']) ?></div>
+                    <div class="stat-value"><?= number_format($s['is_registered']) ?></div>
                     <div class="stat-label">Inscrits</div>
-                    <div class="stat-trend trend-neutral"><?= round(($s['registered']/$s['total_users'])*100, 1) ?>% du total</div>
+                    <div class="stat-trend trend-neutral"><?= round(($s['is_registered']/$s['total_users'])*100, 1) ?>% du total</div>
                 </div>
                 <div class="stat-card glass-sm">
                     <div class="stat-value"><?= number_format($s['deposited']) ?></div>
                     <div class="stat-label">D&eacute;p&ocirc;ts</div>
-                    <div class="stat-trend trend-neutral"><?= round(($s['deposited']/$s['registered'])*100, 1) ?>% des inscrits</div>
+                    <div class="stat-trend trend-neutral"><?= round(($s['deposited']/$s['is_registered'])*100, 1) ?>% des inscrits</div>
                 </div>
                 <div class="stat-card glass-sm">
                     <div class="stat-value">$<?= number_format($s['total_deposits'], 2) ?></div>
@@ -997,7 +996,7 @@ if (!in_array($activeTab, $validTabs)) $activeTab = 'overview';
                         <div class="health-row">
                             <div class="check-badge check-ok">&#10003;</div>
                             <span class="health-label">Inscrits (1win)</span>
-                            <span class="health-value"><?= number_format($s['registered']) ?></span>
+                            <span class="health-value"><?= number_format($s['is_registered']) ?></span>
                         </div>
                         <div class="health-row">
                             <div class="check-badge check-ok">&#10003;</div>
@@ -1016,7 +1015,7 @@ if (!in_array($activeTab, $validTabs)) $activeTab = 'overview';
                         </div>
                     </div>
                     <div class="card-footer">
-                        <span>Conversion: <?= round(($s['deposited']/$s['registered'])*100, 1) ?>%</span>
+                        <span>Conversion: <?= round(($s['deposited']/$s['is_registered'])*100, 1) ?>%</span>
                         <span>$<?= number_format($s['total_deposits'], 2) ?></span>
                     </div>
                 </div>
