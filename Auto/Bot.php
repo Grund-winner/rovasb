@@ -1,52 +1,90 @@
 <?php
 require_once 'config.php';
 
-// Initialize SQLite database
-@mkdir(__DIR__ . '/data', 0777, true);
-$db = new SQLite3(DB_PATH);
-$db->exec('CREATE TABLE IF NOT EXISTS users (
-    user_id INTEGER PRIMARY KEY,
-    language TEXT DEFAULT "en",
-    isregistered TEXT,
-    country TEXT,
-    isdeposit TEXT,
-    deposit_amount TEXT,
-    deposit_transactionid TEXT
-)');
+// Initialize PostgreSQL
+function initDB() {
+    $db = getDB();
+    $db->exec("CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        telegram_id BIGINT,
+        username TEXT,
+        first_name TEXT,
+        last_name TEXT,
+        one_win_user_id TEXT,
+        is_registered BOOLEAN DEFAULT FALSE,
+        is_deposited BOOLEAN DEFAULT FALSE,
+        deposit_amount NUMERIC DEFAULT 0,
+        language TEXT DEFAULT 'en',
+        last_message_id INTEGER,
+        registered_at TIMESTAMPTZ,
+        deposited_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+    )");
 
-// Helper functions
-function saveUserData($userId, $key, $value) {
-    global $db;
+    $db->exec("CREATE TABLE IF NOT EXISTS access_codes (
+        id SERIAL PRIMARY KEY,
+        code TEXT NOT NULL,
+        telegram_id BIGINT,
+        used BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+    )");
 
-    // Table ke actual columns allow karo
-    $allowed = ['language', 'isregistered', 'isdeposit', 'country', 'deposit_amount', 'deposit_transactionid'];
-    if (!in_array($key, $allowed)) {
-        throw new Exception("Invalid column name: $key");
-    }
-
-    // Update karo
-    $stmt = $db->prepare("UPDATE users SET $key = :value WHERE user_id = :user_id");
-    $stmt->bindValue(':user_id', $userId, SQLITE3_INTEGER);
-    $stmt->bindValue(':value', $value, SQLITE3_TEXT);
-    $stmt->execute();
-
-    // Agar update nahi hua (user exist nahi karta)
-    if ($db->changes() === 0) {
-        // Nayi row insert karo with defaults
-        $stmt = $db->prepare("INSERT INTO users (user_id, $key) VALUES (:user_id, :value)");
-        $stmt->bindValue(':user_id', $userId, SQLITE3_INTEGER);
-        $stmt->bindValue(':value', $value, SQLITE3_TEXT);
-        $stmt->execute();
-    }
+    $db->exec("CREATE TABLE IF NOT EXISTS bot_sessions (
+        bot_type TEXT NOT NULL,
+        admin_id BIGINT NOT NULL,
+        action TEXT,
+        step INTEGER,
+        temp_data TEXT,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+    )");
 }
 
-function getUserData($userId, $key) {
-    global $db;
-    $stmt = $db->prepare('SELECT ' . $key . ' FROM users WHERE user_id = :user_id');
-    $stmt->bindValue(':user_id', $userId, SQLITE3_INTEGER);
-    $result = $stmt->execute();
-    $row = $result->fetchArray(SQLITE3_ASSOC);
-    return $row ? $row[$key] : null;
+initDB();
+
+// Helper functions
+function getUserByTelegramId($telegramId) {
+    $db = getDB();
+    $stmt = $db->prepare("SELECT * FROM users WHERE telegram_id = :tid");
+    $stmt->bindValue(':tid', $telegramId, PDO::PARAM_INT);
+    $stmt->execute();
+    return $stmt->fetch();
+}
+
+function saveUserData($telegramId, $key, $value) {
+    $db = getDB();
+
+    $allowed = ['language', 'is_registered', 'is_deposited', 'deposit_amount', 'one_win_user_id', 'username', 'first_name'];
+    if (!in_array($key, $allowed)) return;
+
+    // Check if user exists
+    $stmt = $db->prepare("SELECT id FROM users WHERE telegram_id = :tid");
+    $stmt->bindValue(':tid', $telegramId, PDO::PARAM_INT);
+    $stmt->execute();
+
+    if ($stmt->fetch()) {
+        $stmt = $db->prepare("UPDATE users SET $key = :value, updated_at = NOW() WHERE telegram_id = :tid");
+    } else {
+        $stmt = $db->prepare("INSERT INTO users (telegram_id, $key, updated_at) VALUES (:tid, :value, NOW())");
+    }
+
+    if ($key === 'is_registered' || $key === 'is_deposited') {
+        $stmt->bindValue(':value', ($value === true || $value === 'yes' || $value === 1 || $value === 'true') ? true : false, PDO::PARAM_BOOL);
+    } else {
+        $stmt->bindValue(':value', $value);
+    }
+    $stmt->bindValue(':tid', $telegramId, PDO::PARAM_INT);
+    $stmt->execute();
+}
+
+function getUserData($telegramId, $key) {
+    $user = getUserByTelegramId($telegramId);
+    if (!$user) return null;
+    // Convert boolean fields
+    if (($key === 'is_registered' || $key === 'is_deposited') && isset($user[$key])) {
+        return $user[$key] ? 'yes' : 'no';
+    }
+    return $user[$key] ?? null;
 }
 
 function telegramRequest($method, $data) {
@@ -101,7 +139,7 @@ function checkMembership($userId) {
         'chat_id' => '@' . CHANNEL,
         'user_id' => $userId
     ]);
-    return isset($response['result']['status']) && 
+    return isset($response['result']['status']) &&
            in_array($response['result']['status'], ['member', 'administrator', 'creator']);
 }
 
@@ -133,50 +171,25 @@ $step2_texts = [
 ];
 
 $deposit_success_texts = [
-    "en" => "✅ Deposit received successfully!\n\n💰 Amount: {amount}\n🌍 Country: {country}\n🔖 Transaction ID: {transactionid}\n\nYou now have full access to the bot's features.",
-    "hi" => "✅ जमा सफलतापूर्वक प्राप्त हुआ!\n\n💰 राशि: {amount}\n🌍 देश: {country}\n🔖 लेनदेन आईडी: {transactionid}\n\nअब आपके पास बॉट की सभी सुविधाओं तक पूर्ण पहुंच है।",
-    "ru" => "✅ Депозит успешно получен!\n\n💰 Сумma: {amount}\n🌍 Страна: {country}\n🔖 ID транзакции: {transactionid}\n\nТеперь у вас есть полный доступ к функциям бота.",
-    "pt" => "✅ Depósito recebido com sucesso!\n\n💰 Valor: {amount}\n🌍 País: {country}\n🔖 ID da transação: {transactionid}\n\nAgora você tem acesso total aos recursos do bot.",
-    "es" => "✅ Depósito recibido con éxito!\n\n💰 Monto: {amount}\n🌍 País: {country}\n🔖 ID de transacción: {transactionid}\n\nAhora tienes acceso completo a las funciones del bot.",
-    "uz" => "✅ Depozit muvaffaqiyatli qabul qilindi!\n\n💰 Miqdor: {amount}\n🌍 Mamlakat: {country}\n🔖 Tranzaksiya ID: {transactionid}\n\nEndi siz botning barcha imkoniyatlaridan to'liq foydalanasiz.",
-    "az" => "✅ Depozit uğurla qəbul edildi!\n\n💰 Məbləğ: {amount}\n🌍 Ölkə: {country}\n🔖 Əməliyyat ID: {transactionid}\n\nİndi botun bütün funksiyalarına tam girişiniz var.",
-    "tr" => "✅ Para yatırma işlemi başarıyla alındı!\n\n💰 Miktar: {amount}\n🌍 Ülke: {country}\n🔖 İşlem Kimliği: {transactionid}\n\nArtık botun tüm özelliklerine tam erişiminiz var.",
-    "ar" => "✅ تم استلام الإيداع بنجاح!\n\n💰 المبلغ: {amount}\n🌍 الدولة: {country}\n🔖 معرف المعاملة: {transactionid}\n\nلديك الآن وصول كامل إلى ميزات البوت.",
-    "fr" => "✅ Dépôt reçu avec succès !\n\n💰 Montant : {amount}\n🌍 Pays : {country}\n🔖 ID de transaction : {transactionid}\n\nVous avez maintenant un accès complet aux fonctionnalités du bot."
+    "en" => "✅ Deposit received successfully!\n\n💰 Amount: {amount}\n🔖 Transaction ID: {transactionid}\n\nYou now have full access to the bot's features.",
+    "hi" => "✅ जमा सफलतापूर्वक प्राप्त हुआ!\n\n💰 राशि: {amount}\n🔖 लेनदेन आईडी: {transactionid}\n\nअब आपके पास बॉट की सभी सुविधाओं तक पूर्ण पहुंच है।",
+    "ru" => "✅ Депозит успешно получен!\n\n💰 Сумma: {amount}\n🔖 ID транзакции: {transactionid}\n\nТеперь у вас есть полный доступ к функциям бота.",
+    "pt" => "✅ Depósito recebido com sucesso!\n\n💰 Valor: {amount}\n🔖 ID da transação: {transactionid}\n\nAgora você tem acesso total aos recursos do bot.",
+    "es" => "✅ Depósito recibido con éxito!\n\n💰 Monto: {amount}\n🔖 ID de transacción: {transactionid}\n\nAhora tienes acceso completo a las funciones del bot.",
+    "fr" => "✅ Dépôt reçu avec succès !\n\n💰 Montant : {amount}\n🔖 ID de transaction : {transactionid}\n\nVous avez maintenant un accès complet aux fonctionnalités du bot."
 ];
 
 $account_status_texts = [
-    "en" => "✅ Account Status: Registered & Deposit Completed\n\n● Registration: Completed\n● Deposit: Completed\n● Country: {country}\n\nYou have full access to all features.",
-    "hi" => "✅ खाता स्थिति: पंजीकृत और जमा पूर्ण\n\n● पंजीकरण: पूर्ण\n● जमा: पूर्ण\n● देश: {country}\n\nआपके पास सभी सुविधाओं तक पूर्ण पहुंच है।",
-    "ru" => "✅ Статус аккаунта: Регистрация и депозит завершены\n\n● Регистрация: Завершена\n● Депозит: Завершен\n● Страна: {country}\n\nУ вас есть полный доступ ко всем функциям.",
-    "pt" => "✅ Status da conta: Registro e depósito concluídos\n\n● Registro: Concluído\n● Depósito: Concluído\n● País: {country}\n\nVocê tem acesso total a todos os recursos.",
-    "es" => "✅ Estado de la cuenta: Registro y depósito completados\n\n● Registro: Completado\n● Depósito: Completado\n● País: {country}\n\nTienes acceso completo a todas las funciones.",
-    "uz" => "✅ Hisob holati: Ro'yxatdan o'tilgan va depozit yakunlangan\n\n● Ro'yxatdan o'tish: Yakunlangan\n● Depozit: Yakunlangan\n● Mamlakat: {country}\n\nSiz barcha funksiyalardan to'liq foydalanasiz.",
-    "az" => "✅ Hesab statusu: Qeydiyyat və depozit tamamlandı\n\n● Qeydiyyat: Tamamlandı\n● Depozit: Tamamlandı\n● Ölkə: {country}\n\nBütün funksiyalara tam girişiniz var.",
-    "tr" => "✅ Hesap durumu: Kayıt ve para yatırma tamamlandı\n\n● Kayıt: Tamamlandı\n● Para yatırma: Tamamlandı\n● Ülke: {country}\n\nTüm özelliklere tam erişiminiz var.",
-    "ar" => "✅ حالة الحساب: التسجيل والإيداع مكتمل\n\n● التسجيل: مكتمل\n● الإيداع: مكتمل\n● الدولة: {country}\n\nلديك وصول كامل إلى جميع الميزات.",
-    "fr" => "✅ État du compte : Inscription et dépôt terminés\n\n● Inscription : Terminée\n● Dépôt : Terminé\n● Pays : {country}\n\nVous avez un accès complet à toutes les fonctionnalités."
+    "en" => "✅ Account Status: Registered & Deposit Completed\n\n● Registration: Completed\n● Deposit: Completed\n\nYou have full access to all features.",
+    "hi" => "✅ खाता स्थिति: पंजीकृत और जमा पूर्ण\n\n● पंजीकरण: पूर्ण\n● जमा: पूर्ण\n\nआपके पास सभी सुविधाओं तक पूर्ण पहुंच है।",
+    "ru" => "✅ Статус аккаунта: Регистрация и депозит завершены\n\n● Регистрация: Завершена\n● Депозит: Завершен\n\nУ вас есть полный доступ ко всем функциям.",
+    "pt" => "✅ Status da conta: Registro e depósito concluídos\n\n● Registro: Concluído\n● Depósito: Concluído\n\nVocê tem acesso total a todos os recursos.",
+    "es" => "✅ Estado de la cuenta: Registro y depósito completados\n\n● Registro: Completado\n● Depósito: Completado\n\nTienes acceso completo a todas las funciones.",
+    "fr" => "✅ État du compte : Inscription et dépôt terminés\n\n● Inscription : Terminée\n● Dépôt : Terminé\n\nVous avez un accès complet à toutes les fonctionnalités."
 ];
 
 $instructions_translations = [
     "en" => "🤖 The bot is based on and trained with OpenAI's neural network cluster!\n⚜️ To train the bot, 🎰 30,000 games were played.\n\nCurrently, bot users successfully generate 15 to 25% of their 💰 capital each day!\n\nThe bot is still undergoing verification and adjustments! The bot's accuracy is 95%!\nTo achieve maximum profit, follow these instructions:\n\n🟢 1. Sign up on the 1WIN betting site.\n[If it doesn't open, use a VPN (Sweden). Examples: Vpnify, Planet VPN, Hotspot VPN.]\n⚠️ Without registration and without the promo code (ROVAS), access to signals will not be granted ⚠️\n\n🟢 2. Top up your account balance.\n🟢 3. Go to the 1WIN games section and select the game.\n🟢 4. Request a signal from the bot and place your bets accordingly.\n🟢 5. If you lose, double your bet (x²) to recover your losses.",
-    
-    "hi" => "🤖 बॉट OpenAI न्यूरल नेटवर्क क्लस्टर पर आधारित और प्रशिक्षित है!\n⚜️ बॉट को प्रशिक्षित करने के लिए 🎰 30,000 गेम खेले गए।\n\nवर्तमान में, बॉट उपयोगकर्ता अपनी 💰 पूंजी से प्रतिदिन 15-25% सफलतापूर्वक उत्पन्न कर रहे हैं!\n\nबॉट अभी भी जांच और सुधार के दौर से गुजर रहा है! बॉट की सटीकता 95% है!\nअधिकतम लाभ प्राप्त करने के लिए, इस निर्देश का पालन करें:\n\n🟢 1. 1WIN बेटिंग साइट पर साइन अप करें।\n[यदि नहीं खुल रहा है, तो VPN (स्वीडन) का उपयोग करें। उदाहरण: Vpnify, Planet VPN, Hotspot VPN.]\n⚠️ पंजीकरण और प्रोमो कोड (ROVAS) के बिना, सिग्नल तक पहुंच नहीं मिलेगी ⚠️\n\n🟢 2. अपने खाते की शेष राशि को टॉप अप करें।\n🟢 3. 1WIN गेम्स सेक्शन पर जाएं और गेम चुनें।\n🟢 4. बॉट से सिग्नल का अनुरोध करें और उसके अनुसार दांव लगाएं।\n🟢 5. यदि आप हारते हैं, तो अपने दांव को दोगुना (x²) करें।",
-    
-    "ru" => "🤖 Бот основан и обучен на кластере нейронных сетей OpenAI!\n⚜️ Для обучения бота было сыграно 🎰 30 000 игр.\n\nВ настоящее время пользователи бота успешно генерируют 15-25% от своего 💰 капитала ежедневно!\n\nБот всё ещё проходит проверку и доработки! Точность бота 95%!\nЧтобы получить максимальную прибыль, следуйте этой инструкции:\n\n🟢 1. Зарегистрируйтесь на сайте ставок 1WIN.\n[Если не открывается, используйте VPN (Швеция). Примеры: Vpnify, Planet VPN, Hotspot VPN.]\n⚠️ Без регистрации и без промокода (ROVAS) доступ к сигналам не будет предоставлен ⚠️\n\n🟢 2. Пополните баланс своего счета.\n🟢 3. Перейдите в раздел игр 1WIN и выберите игру.\n🟢 4. Запросите сигнал у бота и ставьте соответственно.\n🟢 5. В случае проигрыша удвойте ставку (x²), чтобы возместить потери.",
-    
-    "pt" => "🤖 O bot é baseado e treinado no cluster de rede neural da OpenAI!\n⚜️ Para treinar o bot, 🎰 foram jogados 30.000 jogos.\n\nAtualmente, os usuários do bot geram com sucesso 15-25% do seu 💰 capital diariamente!\n\nO bot ainda está em verificação e ajustes! A precisão do bot é de 95%!\nPara obter lucro máximo, siga estas instruções:\n\n🟢 1. Cadastre-se no site de apostas 1WIN.\n[Se não abrir, use VPN (Suécia). Exemplos: Vpnify, Planet VPN, Hotspot VPN.]\n⚠️ Sem registro e sem o código promocional (ROVAS), o acesso aos sinais não será concedido ⚠️\n\n🟢 2. Recarregue o saldo da sua conta.\n🟢 3. Vá para a seção de jogos 1WIN e escolha o jogo.\n🟢 4. Solicite um sinal ao bot e aposte de acordo.\n🟢 5. Se perder, dobre sua aposta (x²) para recuperar as perdas.",
-    
-    "es" => "🤖 ¡El bot está basado y entrenado en el clúster de redes neuronales de OpenAI!\n⚜️ Para entrenar al bot, 🎰 se jugaron 30,000 partidas.\n\nActualmente, los usuarios del bot generan con éxito un 15-25% de su 💰 capital diariamente!\n\n¡El bot aún está en revisión y ajustes! La precisión del bot es del 95%!\nPara obtener el máximo beneficio, siga estas instrucciones:\n\n🟢 1. Regístrese en el sitio de apuestas 1WIN.\n[Si no se abre, use VPN (Suecia). Ejemplos: Vpnify, Planet VPN, Hotspot VPN.]\n⚠️ Sin registro y sin el código promocional (ROVAS), no se otorgará acceso a las señales ⚠️\n\n🟢 2. Recargue el saldo de su cuenta.\n🟢 3. Vaya a la sección de juegos 1WIN y elija el juego.\n🟢 4. Solicite una señal al bot y apueste en consecuencia.\n🟢 5. Si pierde, duplique su apuesta (x²) para recuperar pérdidas.",
-    
-    "uz" => "🤖 Bot OpenAI neyron tarmoq klasterida asoslangan va o'qitilgan!\n⚜️ Botni o'qitish uchun 🎰 30 000 o'yin o'ynaldi.\n\nHozirda bot foydalanuvchilari kuniga o'z 💰 kapitalidan 15-25% daromad olishmoqda!\n\nBot hali tekshirilmoqda va tuzatishlar kiritilmoqda! Botning aniqligi 95%!\nMaksimal foyda olish uchun ushbu ko'rsatmalarga amal qiling:\n\n🟢 1. 1WIN bukmekerlik saytida ro'yxatdan o'ting.\n[Agar ochilmasa, VPN (Shvetsiya) ishlating. Misollar: Vpnify, Planet VPN, Hotspot VPN.]\n⚠️ Ro'yxatdan o'tmasdan va promo kodsiz (ROVAS) signalga kirish berilmaydi ⚠️\n\n🟢 2. Hisobingiz balansini to'ldiring.\n🟢 3. 1WIN o'yinlar bo'limiga o'ting va o'yinni tanlang.\n🟢 4. Botdan signal so'rang va shunga mos ravishda pul tiking.\n🟢 5. Agar yutsangiz, yo'qotishlarni qoplash uchun tikishingizni ikki baravar oshiring (x²).",
-    
-    "az" => "🤖 Bot OpenAI neyron şəbəkə klasterində əsaslanıb və öyrədilib!\n⚜️ Botu öyrətmək üçün 🎰 30,000 oyun oynanıldı.\n\nHazırda bot istifadəçiləri gündəlik öz 💰 kapitalından 15-25% gəlir əldə edirlər!\n\nBot hələ yoxlanış və düzəliş mərhələsindədir! Botun dəqiqliyi 95%-dir!\nMaksimum qazanc əldə etmək üçün bu təlimatı izləyin:\n\n🟢 1. 1WIN bahis saytında qeydiyyatdan keçin.\n[Açılmırsa, VPN (İsveç) istifadə edin. Nümunələr: Vpnify, Planet VPN, Hotspot VPN.]\n⚠️ Qeydiyyat və promo kod (ROVAS) olmadan siqnallara giriş verilmir ⚠️\n\n🟢 2. Hesab balansınızı artırın.\n🟢 3. 1WIN oyun bölməsinə keçin və oyunu seçin.\n🟢 4. Botdan siqnal istəyin və uyğun olaraq mərc edin.\n🟢 5. Əgər uduzsanız, itkiləri bərpa etmək üçün mərci ikiqat artırın (x²).",
-    
-    "tr" => "🤖 Bot OpenAI sinir ağı kümesinde eğitildi!\n⚜️ Botu eğitmek için 🎰 30.000 oyun oynandı.\n\nŞu anda bot kullanıcıları, günlük olarak 💰 sermayelerinden %15-25 kazanç elde ediyor!\n\nBot hâlâ test ve düzeltme aşamasındadır! Botun doğruluğu %95!\nMaksimum kar elde etmek için bu talimatları izleyin:\n\n🟢 1. 1WIN bahis sitesine kaydolun.\n[Açılmıyorsa, VPN (İsveç) kullanın. Örnekler: Vpnify, Planet VPN, Hotspot VPN.]\n⚠️ Kayıt ve promosyon kodu (ROVAS) olmadan sinyallere erişim verilmeyecektir ⚠️\n\n🟢 2. Hesap bakiyenizi artırın.\n🟢 3. 1WIN oyun bölümüne gidin ve oyunu seçin.\n🟢 4. Bottan sinyal isteyin ve ona göre bahis yapın.\n🟢 5. Kaybederseniz, kayıpları telafi etmek için bahsi iki katına çıkarın (x²).",
-    
-    "ar" => "🤖 يعتمد البوت على مجموعة الشبكات العصبية OpenAI وتم تدريبه عليها!\n⚜️ لتدريب البوت، تم لعب 🎰 30,000 لعبة.\n\nحاليًا، يولد مستخدمو البوت بنجاح 15-25% من رأس مالهم 💰 يوميًا!\n\nلا يزال البوت قيد الفحص والتعديلات! دقة البوت 95%!\nلتحقيق أقصى ربح، اتبع هذه التعليمات:\n\n🟢 1. سجّل في موقع المراهنات 1WIN.\n[إذا لم يفتح، استخدم VPN (السويد). أمثلة: Vpnify, Planet VPN, Hotspot VPN.]\n⚠️ بدون التسجيل وبدون رمز الترويج (ROVAS)، لن يتم منح الوصول إلى الإشارات ⚠️\n\n🟢 2. قم بزيادة رصيد حسابك.\n🟢 3. انتقل إلى قسم ألعاب 1WIN واختر اللعبة.\n🟢 4. اطلب إشارة من البوت واراهن وفقًا لذلك.\n🟢 5. إذا خسرت، ضاعف رهانك (x²) لاستعادة خسائرك.",
-    
     "fr" => "🤖 Le bot est basé et entraîné sur le cluster de réseaux neuronaux d'OpenAI !\n⚜️ Pour entraîner le bot, 🎰 30 000 parties ont été jouées.\n\nActuellement, les utilisateurs du bot génèrent avec succès 15 à 25 % de leur 💰 capital chaque jour !\n\nLe bot est encore en cours de vérifications et d'ajustements ! La précision du bot est de 95 % !\nPour obtenir un profit maximal, suivez cette instruction :\n\n🟢 1. Inscrivez-vous sur le site de paris 1WIN.\n[Si cela ne s'ouvre pas, utilisez un VPN (Suède). Exemples : Vpnify, Planet VPN, Hotspot VPN.]\n⚠️ Sans inscription et sans code promo (ROVAS), l'accès aux signaux ne sera pas accordé ⚠️\n\n🟢 2. Rechargez le solde de votre compte.\n🟢 3. Allez dans la section des jeux 1WIN et sélectionnez le jeu.\n🟢 4. Demandez un signal au bot et placez vos mises en conséquence.\n🟢 5. En cas de perte, doublez votre mise (x²) pour récupérer vos pertes."
 ];
 
@@ -193,133 +206,105 @@ $main_menu_translations = [
     "fr" => ["main_menu" => "Menu principal :", "registration" => "📱 Inscription", "instruction" => "📚 Instruction", "choose_lang" => "🌐 Choisir la langue", "get_signal" => "⚜ OBTENIR LE SIGNAL ⚜", "account_status" => "✅ État du compte", "back" => "🔙 Retour"]
 ];
 
-// Handle webhook events
-
-// Handle webhook events
+// Handle webhook events from Rovaspost.php
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] === 'webhook') {
     $input = json_decode(file_get_contents('php://input'), true);
-    
+
     if (json_last_error() !== JSON_ERROR_NONE) {
         http_response_code(400);
         exit('Invalid JSON');
     }
-    
+
     $event = $input['event'] ?? null;
     $tgid = $input['tgid'] ?? null;
-    
+
     if ($event && $tgid) {
         if ($event === 'registration') {
-            // Check if user is already registered
-            $isRegistered = getUserData($tgid, 'isregistered');
+            $isRegistered = getUserData($tgid, 'is_registered');
             if ($isRegistered === 'yes') {
                 http_response_code(200);
                 exit('User already registered');
             }
-            
+
             $country = $input['country'] ?? '';
-            
-            // Validate registration data
+            $userid = $input['userid'] ?? '';
+
             if (empty($country)) {
                 http_response_code(400);
                 exit('Country is required for registration');
             }
-            
-            saveUserData($tgid, 'isregistered', 'yes');
-            saveUserData($tgid, 'country', $country);
-            saveUserData($tgid, 'isdeposit', 'no');
-            
+
+            // Register user in PostgreSQL
+            $db = getDB();
+            $stmt = $db->prepare("INSERT INTO users (telegram_id, is_registered, registered_at, updated_at, one_win_user_id) 
+                                  VALUES (:tid, TRUE, NOW(), NOW(), :winid)
+                                  ON CONFLICT DO NOTHING");
+            $stmt->bindValue(':tid', $tgid, PDO::PARAM_INT);
+            $stmt->bindValue(':winid', $userid ?: null);
+            $stmt->execute();
+
+            // Update deposit status to false if was null
+            $stmt = $db->prepare("UPDATE users SET is_deposited = FALSE WHERE telegram_id = :tid AND is_deposited IS NULL");
+            $stmt->bindValue(':tid', $tgid, PDO::PARAM_INT);
+            $stmt->execute();
+
             $lang = getUserData($tgid, 'language') ?: 'en';
             $message = $step2_texts[$lang] ?? $step2_texts['en'];
-            
+
             $keyboard = [
                 'inline_keyboard' => [
                     [['text' => "💰 Deposit", 'url' => "https://one-vv908.com/?open=register&p=583j&sub1=$tgid"]],
                     [['text' => "⬅️ Back to Main Menu", 'callback_data' => "main"]]
                 ]
             ];
-            
+
             sendPhoto($tgid, "https://i.ibb.co/zWgnCxLB/IMG-20250812-102227-999.jpg", $message, $keyboard);
-        } 
+        }
         elseif ($event === 'deposit') {
-            // Check if user has already made a deposit
-            $isDeposit = getUserData($tgid, 'isdeposit');
+            $isDeposit = getUserData($tgid, 'is_deposited');
             if ($isDeposit === 'yes') {
                 http_response_code(200);
                 exit('User already made a deposit');
             }
-            
-            // Check if user is registered first
-            $isRegistered = getUserData($tgid, 'isregistered');
+
+            $isRegistered = getUserData($tgid, 'is_registered');
             if ($isRegistered !== 'yes') {
                 http_response_code(400);
                 exit('User must register before making a deposit');
             }
-            
+
             $amount = $input['amount'] ?? '0';
             $country = $input['country'] ?? '';
             $transactionid = $input['transactionid'] ?? '';
-            
-            // Validate deposit data
-            $errors = [];
-            
+
             if (empty($amount) || floatval($amount) <= 0) {
-                $errors[] = "Deposit amount must be greater than zero";
-            }
-            
-            if (empty($country)) {
-                $errors[] = "Country is required";
-            }
-            
-            if (empty($transactionid)) {
-                $errors[] = "Transaction ID is required";
-            }
-            
-            // If there are validation errors, return them
-            if (!empty($errors)) {
                 http_response_code(400);
-                exit('Validation failed: ' . implode(', ', $errors));
+                exit('Deposit amount must be greater than zero');
             }
-            
-            // All validation passed, process the deposit
-            saveUserData($tgid, 'isdeposit', 'yes');
-            saveUserData($tgid, 'deposit_amount', $amount);
-            saveUserData($tgid, 'deposit_transactionid', $transactionid);
-            
-            // ... [previous code in deposit event]
 
-$lang = getUserData($tgid, 'language') ?: 'en';
-$message = $deposit_success_texts[$lang] ?? $deposit_success_texts['en'];
-$message = str_replace(['{amount}', '{country}', '{transactionid}'], [$amount, $country, $transactionid], $message);
-$t = $main_menu_translations[$lang] ?? $main_menu_translations['en'];
+            // Update deposit in PostgreSQL
+            $db = getDB();
+            $stmt = $db->prepare("UPDATE users SET is_deposited = TRUE, deposit_amount = :amount, deposited_at = NOW(), updated_at = NOW() WHERE telegram_id = :tid");
+            $stmt->bindValue(':amount', floatval($amount));
+            $stmt->bindValue(':tid', $tgid, PDO::PARAM_INT);
+            $stmt->execute();
 
-$keyboard = [
-    'inline_keyboard' => [
-        [
-            [
-                'text' => "📡 " . $t['get_signal'],
-                'web_app' => [
-                    'url' => WEB_APP_URL
+            $lang = getUserData($tgid, 'language') ?: 'en';
+            $message = $deposit_success_texts[$lang] ?? $deposit_success_texts['en'];
+            $message = str_replace(['{amount}', '{transactionid}'], [$amount, $transactionid], $message);
+
+            $t = $main_menu_translations[$lang] ?? $main_menu_translations['en'];
+
+            $keyboard = [
+                'inline_keyboard' => [
+                    [['text' => "📡 " . $t['get_signal'], 'web_app' => ['url' => WEB_APP_URL]]],
+                    [['text' => "⬅ " . $t['back'], 'callback_data' => "main"]]
                 ]
-            ]
-        ],
-        [
-            [
-                'text' => "⬅ " . $t['back'],
-                'callback_data' => "main"
-            ]
-        ]
-    ]
-];
+            ];
 
-// FIX: Replace $chatId with $tgid
-sendPhoto(
-    $tgid,  // Changed from $chatId to $tgid
-    "https://t.me/photoszr/11",
-    "✅ BOT ACTIVATED 🟩",
-    $keyboard
-);
+            sendPhoto($tgid, "https://t.me/photoszr/11", "✅ BOT ACTIVATED 🟩", $keyboard);
         }
-        
+
         http_response_code(200);
         exit('OK');
     } else {
@@ -328,13 +313,10 @@ sendPhoto(
     }
 }
 
-// ... [rest of the code remains the same]
-
 // Handle Telegram updates
 $update = json_decode(file_get_contents('php://input'), true);
 
 if (json_last_error() !== JSON_ERROR_NONE) {
-    // Not a valid Telegram update
     exit;
 }
 
@@ -343,7 +325,21 @@ if (isset($update['message'])) {
     $chatId = $message['chat']['id'];
     $userId = $message['from']['id'];
     $text = $message['text'] ?? '';
-    
+
+    // Save user info on first interaction
+    if ($text && strpos($text, '/start') === 0) {
+        $db = getDB();
+        $stmt = $db->prepare("INSERT INTO users (telegram_id, username, first_name, last_name, language, updated_at) 
+                              VALUES (:tid, :uname, :fname, :lname, :lang, NOW())
+                              ON CONFLICT DO NOTHING");
+        $stmt->bindValue(':tid', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':uname', $message['from']['username'] ?? null);
+        $stmt->bindValue(':fname', $message['from']['first_name'] ?? null);
+        $stmt->bindValue(':lname', $message['from']['last_name'] ?? null);
+        $stmt->bindValue(':lang', $message['from']['language_code'] ?? 'en');
+        $stmt->execute();
+    }
+
     if (strpos($text, '/start') === 0) {
         if (checkMembership($userId)) {
             $lang = getUserData($userId, 'language');
@@ -366,7 +362,7 @@ if (isset($update['message'])) {
         $webhookUrl = BASE_URL . '?action=webhook';
         sendMessage($chatId, "Webhook URL:\n$webhookUrl", null, 'HTML');
     }
-} 
+}
 elseif (isset($update['callback_query'])) {
     $callback = $update['callback_query'];
     $data = $callback['data'];
@@ -374,7 +370,7 @@ elseif (isset($update['callback_query'])) {
     $userId = $callback['from']['id'];
     $messageId = $callback['message']['message_id'];
     $callbackId = $callback['id'];
-    
+
     if (strpos($data, '/lang') === 0) {
         $lang = explode(' ', $data)[1] ?? '';
         if ($lang && array_key_exists($lang, $main_menu_translations)) {
@@ -385,7 +381,7 @@ elseif (isset($update['callback_query'])) {
         } else {
             answerCallbackQuery($callbackId, "❌ Invalid language selection", true);
         }
-    } 
+    }
     else {
         switch ($data) {
             case 'verify_join':
@@ -402,13 +398,13 @@ elseif (isset($update['callback_query'])) {
                     answerCallbackQuery($callbackId, "❌ Please join the channel first", true);
                 }
                 break;
-                
+
             case 'change_lang':
                 answerCallbackQuery($callbackId);
                 deleteMessage($chatId, $messageId);
                 showLanguageSelection($chatId);
                 break;
-                
+
             case 'instruction':
                 answerCallbackQuery($callbackId);
                 deleteMessage($chatId, $messageId);
@@ -417,31 +413,31 @@ elseif (isset($update['callback_query'])) {
                 $keyboard = ['inline_keyboard' => [[['text' => "🔙 Back", 'callback_data' => "main"]]]];
                 sendMessage($chatId, $text, $keyboard);
                 break;
-                
+
             case 'main':
                 answerCallbackQuery($callbackId);
                 deleteMessage($chatId, $messageId);
                 runMain($chatId, $userId);
                 break;
-                
+
             case 'get_signal':
                 answerCallbackQuery($callbackId);
                 deleteMessage($chatId, $messageId);
                 sendGetSignalButton($chatId, $userId);
                 break;
-                
+
             case 'registration':
                 answerCallbackQuery($callbackId);
                 deleteMessage($chatId, $messageId);
                 handleRegistration($chatId, $userId);
                 break;
-                
+
             case 'account_status':
                 answerCallbackQuery($callbackId);
                 deleteMessage($chatId, $messageId);
                 handleAccountStatus($chatId, $userId);
                 break;
-                
+
             default:
                 answerCallbackQuery($callbackId, "❌ Unknown command", true);
                 break;
@@ -451,8 +447,6 @@ elseif (isset($update['callback_query'])) {
 
 // Command handlers
 function showLanguageSelection($chatId) {
-    global $main_menu_translations;
-    
     $keyboard = [
         'inline_keyboard' => [
             [['text' => "🇷🇺 Русский", 'callback_data' => "/lang ru"], ['text' => "🇬🇧 English", 'callback_data' => "/lang en"]],
@@ -468,114 +462,62 @@ function showLanguageSelection($chatId) {
 
 function runMain($chatId, $userId) {
     global $main_menu_translations;
-    
+
     $lang = getUserData($userId, 'language') ?: 'en';
     $t = $main_menu_translations[$lang] ?? $main_menu_translations['en'];
-    
-    $isRegistered = getUserData($userId, 'isregistered');
-    $isDeposit = getUserData($userId, 'isdeposit');
-    
-    // Registration button
+
+    $isRegistered = getUserData($userId, 'is_registered');
+    $isDeposit = getUserData($userId, 'is_deposited');
+
     $registrationButton = ['text' => $t['registration'], 'callback_data' => 'registration'];
     if ($isRegistered === 'yes' && $isDeposit === 'yes') {
         $registrationButton = ['text' => $t['account_status'], 'callback_data' => 'account_status'];
     }
-    
-    // Get signal button logic
+
     if ($isRegistered === 'yes' && $isDeposit === 'yes') {
         $getSignalButton = ['text' => $t['get_signal'], 'callback_data' => 'get_signal'];
     } else {
         $getSignalButton = ['text' => $t['get_signal'], 'callback_data' => 'registration'];
     }
-    
-    // Build keyboard
+
     $keyboard = [
         'inline_keyboard' => [
-            [
-                $registrationButton,
-                ['text' => $t['instruction'], 'callback_data' => 'instruction']
-            ],
-            [
-                ['text' => $t['choose_lang'], 'callback_data' => 'change_lang']
-            ],
-            [
-                $getSignalButton
-            ]
+            [$registrationButton, ['text' => $t['instruction'], 'callback_data' => 'instruction']],
+            [['text' => $t['choose_lang'], 'callback_data' => 'change_lang']],
+            [$getSignalButton]
         ]
     ];
-    
-    // Send menu photo
-    sendPhoto(
-        $chatId,
-        "https://i.ibb.co/qLjsWV2W/IMG-20250812-091057-129.jpg",
-        $t['main_menu'],
-        $keyboard
-    );
+
+    sendPhoto($chatId, "https://i.ibb.co/qLjsWV2W/IMG-20250812-091057-129.jpg", $t['main_menu'], $keyboard);
 }
 
 function handleRegistration($chatId, $userId) {
     global $step1_texts, $step2_texts;
-    
+
     $lang = getUserData($userId, 'language') ?: 'en';
-    $isRegistered = getUserData($userId, 'isregistered');
-    $isDeposit = getUserData($userId, 'isdeposit');
-    
+    $isRegistered = getUserData($userId, 'is_registered');
+    $isDeposit = getUserData($userId, 'is_deposited');
+
     if ($isRegistered !== 'yes') {
         $keyboard = [
             'inline_keyboard' => [
-                [
-                    [
-                        'text' => "📱 🔶 Register",
-                        'url'  => "https://one-vv908.com/?open=register&p=583j&sub1=$userId"
-                    ]
-                ],
-                [
-                    [
-                        'text' => "⬅️ Back to Main Menu",
-                        'callback_data' => "main"
-                    ]
-                ]
+                [['text' => "📱 🔶 Register", 'url' => "https://one-vv908.com/?open=register&p=583j&sub1=$userId"]],
+                [['text' => "⬅️ Back to Main Menu", 'callback_data' => "main"]]
             ]
         ];
-        
         $text = $step1_texts[$lang] ?? $step1_texts['en'];
-        
-        sendPhoto(
-            $chatId,
-            "https://t.me/photoszr/10",
-            $text,
-            $keyboard,
-            'HTML'
-        );
-    } 
+        sendPhoto($chatId, "https://t.me/photoszr/10", $text, $keyboard, 'HTML');
+    }
     elseif ($isDeposit !== 'yes') {
         $keyboard = [
             'inline_keyboard' => [
-                [
-                    [
-                        'text' => "💰 Deposit",
-                        'url'  => "https://one-vv908.com/?open=deposit&p=583j&sub1=$userId"
-                    ]
-                ],
-                [
-                    [
-                        'text' => "⬅️ Back to Main Menu",
-                        'callback_data' => "main"
-                    ]
-                ]
+                [['text' => "💰 Deposit", 'url' => "https://one-vv908.com/?open=deposit&p=583j&sub1=$userId"]],
+                [['text' => "⬅️ Back to Main Menu", 'callback_data' => "main"]]
             ]
         ];
-        
         $text = $step2_texts[$lang] ?? $step2_texts['en'];
-        
-        sendPhoto(
-            $chatId,
-            "https://i.ibb.co/zWgnCxLB/IMG-20250812-102227-999.jpg",
-            $text,
-            $keyboard,
-            'HTML'
-        );
-    } 
+        sendPhoto($chatId, "https://i.ibb.co/zWgnCxLB/IMG-20250812-102227-999.jpg", $text, $keyboard, 'HTML');
+    }
     else {
         handleAccountStatus($chatId, $userId);
     }
@@ -583,52 +525,32 @@ function handleRegistration($chatId, $userId) {
 
 function handleAccountStatus($chatId, $userId) {
     global $account_status_texts;
-    
+
     $lang = getUserData($userId, 'language') ?: 'en';
-    $country = getUserData($userId, 'country') ?: 'Not set';
-    
     $text = $account_status_texts[$lang] ?? $account_status_texts['en'];
-    $text = str_replace('{country}', $country, $text);
-    
+
     $keyboard = [
         'inline_keyboard' => [
             [['text' => "⬅️ Back to Main Menu", 'callback_data' => "main"]]
         ]
     ];
-    
+
     sendMessage($chatId, $text, $keyboard);
 }
 
 function sendGetSignalButton($chatId, $userId) {
     global $main_menu_translations;
-    
+
     $lang = getUserData($userId, 'language') ?: 'en';
     $t = $main_menu_translations[$lang] ?? $main_menu_translations['en'];
-    
+
     $keyboard = [
         'inline_keyboard' => [
-            [
-                [
-                    'text' => "📡 " . $t['get_signal'],
-                    'web_app' => [
-                        'url' => WEB_APP_URL
-                    ]
-                ]
-            ],
-            [
-                [
-                    'text' => "⬅ " . $t['back'],
-                    'callback_data' => "main"
-                ]
-            ]
+            [['text' => "📡 " . $t['get_signal'], 'web_app' => ['url' => WEB_APP_URL]]],
+            [['text' => "⬅ " . $t['back'], 'callback_data' => "main"]]
         ]
     ];
 
-    sendPhoto(
-        $chatId,
-        "https://t.me/photoszr/11",
-        "✅ BOT ACTIVATED 🟩",
-        $keyboard
-    );
+    sendPhoto($chatId, "https://t.me/photoszr/11", "✅ BOT ACTIVATED 🟩", $keyboard);
 }
 ?>

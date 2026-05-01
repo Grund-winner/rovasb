@@ -4,11 +4,12 @@ if (!isset($_SESSION['admin_logged_in'])) {
     die("Unauthorized");
 }
 
+require_once __DIR__ . '/config.php';
+
 header('Content-Type: application/json');
 
-$db = new SQLite3(__DIR__ . '/data/bot.db');
-// MODIFIE ICI : utilise le MEME token que dans config.php (Bot 1)
-$BOT_TOKEN = "8436757891:AAFP1o04hTD5ka7NaWRGUOlBR-kiHYF1UMY";
+$db = getDB();
+$BOT_TOKEN = TOKEN;
 define("BATCH_SIZE", 30);
 
 $type    = $_POST['type'] ?? 'text';
@@ -16,15 +17,15 @@ $message = $_POST['message'] ?? '';
 $caption = $_POST['caption'] ?? '';
 $filter  = $_POST['filter'] ?? 'all';
 
-// -------- FILTER USERS ----------
-$res = $db->query("SELECT user_id, isregistered, isdeposit FROM users");
+// -------- FILTER USERS from PostgreSQL --------
+$stmt = $db->query("SELECT telegram_id, is_registered, is_deposited FROM users");
 $users = [];
-while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
-    if ($filter === 'registered'   && $row['isregistered'] !== 'yes') continue;
-    if ($filter === 'unregistered' && $row['isregistered'] === 'yes') continue;
-    if ($filter === 'deposited'    && $row['isdeposit'] !== 'yes') continue;
-    if ($filter === 'undeposited'  && $row['isdeposit'] === 'yes') continue;
-    $users[] = $row['user_id'];
+while ($row = $stmt->fetch()) {
+    if ($filter === 'registered'   && $row['is_registered'] != true) continue;
+    if ($filter === 'unregistered' && $row['is_registered'] == true) continue;
+    if ($filter === 'deposited'    && $row['is_deposited'] != true) continue;
+    if ($filter === 'undeposited'  && $row['is_deposited'] == true) continue;
+    $users[] = $row['telegram_id'];
 }
 
 $total  = count($users);
@@ -119,5 +120,5 @@ function update_progress($sent, $failed, $total, $status, $error = "") {
         "error"  => $error,
         "percent"=> $total > 0 ? round(($sent + $failed) / $total * 100) : 0
     ];
-    file_put_contents("progress.json", json_encode($progress));
+    file_put_contents(__DIR__ . "/progress.json", json_encode($progress));
 }

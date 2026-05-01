@@ -1,17 +1,18 @@
 FROM php:8.1-apache
 
-# Install SQLite3 development library
+# Install PostgreSQL development library
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install PDO + PostgreSQL
+RUN docker-php-ext-install pdo pdo_pgsql
+
+# Also keep SQLite for compatibility (Rovaspredict.php uses it)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/*
-
-# Install PDO + SQLite via PDO (works reliably)
-RUN docker-php-ext-install pdo pdo_sqlite
-
-# Install sqlite3 extension via PECL as fallback
-RUN pecl install sqlite3 \
-    && docker-php-ext-enable sqlite3 \
-    || echo "SQLite3 extension install skipped"
+RUN docker-php-ext-install pdo_sqlite
 
 # Enable Apache mod_rewrite
 RUN a2enmod rewrite
