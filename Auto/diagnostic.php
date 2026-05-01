@@ -89,7 +89,7 @@ foreach ($vids as $v) {
 }
 
 $services = [$api, $render, $pred, $admin, $gm, $postback, $db];
-$on = count(array_filter($services, fn($s)=>$s['status']==='online'));
+$on = 0; foreach ($services as $s) { if ($s['status']==='online') $on++; }
 $off = count($services) - $on;
 $allOk = $off === 0;
 $pageMs = round((microtime(true)-$t0)*1000);
@@ -535,7 +535,7 @@ body{
   </div>
 
   <!-- Postback & Config -->
-  <?php $pbOk=$postback['status']==='online';$scOk=$sc!==null;$allVid=count(array_filter($vidSt,fn($v)=>$v['ok']))===count($vidSt); ?>
+  <?php $pbOk=$postback['status']==='online';$scOk=$sc!==null;$vidOk=0; foreach ($vidSt as $v) { if ($v['ok']) $vidOk++; } $allVid=($vidOk===count($vidSt)); ?>
   <div class="card card-glow-<?=($pbOk&&$scOk)?'green':'red'?> anim d6">
     <div class="ch">
       <div class="ch-left">
@@ -567,7 +567,7 @@ body{
     <?php endforeach; endif;?>
     <div class="hr">
       <div class="hr-icon <?=$allVid?'ok':'warn'?>"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
-      <span class="hr-label">Videos instruction/depot</span><span class="hr-val"><?=count(array_filter($vidSt,fn($v=>$v['ok'])))?>/<?=count($vidSt)?></span>
+      <span class="hr-label">Videos instruction/depot</span><span class="hr-val"><?=$vidOk?>/<?=count($vidSt)?></span>
     </div>
     <div class="cf"><span>1win Affiliate</span><span><?=$postback['ms']?>ms</span></div>
   </div>
