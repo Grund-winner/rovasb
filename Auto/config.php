@@ -11,7 +11,7 @@ define('DB_SSL', true);
 define('DB_PATH', __DIR__ . '/data/bot.db');
 
 // Bot configuration
-define('TOKEN', '8436757891:AAFP1o04hTD5ka7NaWRGUOlBR-kiHYF1UMY');
+define('TOKEN', '8436757891:AAE5jqAIlas2WtDjImIO8xNDR5FXznJ2dJo');
 define('CHANNEL', 'ROVASOFFICIEL');
 define('PROMOCODE', 'ROVAS');
 define('P_PARAM', '583j');

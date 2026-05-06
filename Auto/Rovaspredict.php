@@ -8,7 +8,7 @@ define('ADMIN_ID', 0);
 @mkdir(__DIR__ . '/data', 0777, true);
 define('DB_PATH', __DIR__ . '/data/rovasprono.db');
 // REMPLACE PAR TON NOUVEAU TOKEN DU BOT 2 (Rovaspredict - via @BotFather)
-define('BOT_TOKEN', '8436757891:AAFP1o04hTD5ka7NaWRGUOlBR-kiHYF1UMY');
+define('BOT_TOKEN', '8436757891:AAE5jqAIlas2WtDjImIO8xNDR5FXznJ2dJo');
 define('CHANNELS', ['@ROVASOFFICIEL']);
 
 // ========================
