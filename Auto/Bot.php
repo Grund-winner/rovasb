@@ -335,6 +335,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     }
 }
 
+// Verify webhook secret token from Telegram
+if (isset($_SERVER['HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN'])) {
+    if ($_SERVER['HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN'] !== WEBHOOK_SECRET) {
+        http_response_code(403);
+        exit('Forbidden');
+    }
+}
+
 // Handle Telegram updates
 $update = json_decode(file_get_contents('php://input'), true);
 
@@ -380,10 +388,7 @@ if (isset($update['message'])) {
             sendMessage($chatId, "Please join our channel to continue.", $keyboard);
         }
     }
-    elseif ($text === '/gwt') {
-        $webhookUrl = BASE_URL . '?action=webhook';
-        sendMessage($chatId, "Webhook URL:\n$webhookUrl", null, 'HTML');
-    }
+
 }
 elseif (isset($update['callback_query'])) {
     $callback = $update['callback_query'];

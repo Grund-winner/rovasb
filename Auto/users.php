@@ -29,7 +29,7 @@ if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== tru
         $username = $_POST['username'] ?? '';
         $password = $_POST['password'] ?? '';
 
-        if ($username === 'rovas' && $password === 'Patrick2026@####') {
+        if ($username === ADMIN_USER && $password === ADMIN_PASS) {
             $_SESSION['admin_logged_in'] = true;
             header("Location: users.php");
             exit;

@@ -1,6 +1,7 @@
 <?php
 // login.php
 session_start();
+require_once __DIR__ . '/config.php';
 
 // Already logged in? send to dashboard
 if (!empty($_SESSION['admin_logged_in'])) {
@@ -8,10 +9,9 @@ if (!empty($_SESSION['admin_logged_in'])) {
     exit();
 }
 
-// MODIFIE ICI : ton nouveau nom d'utilisateur admin
-$ADMIN_USER = "rovas";
-// MODIFIE ICI : ton nouveau mot de passe admin (fort et secret !)
-$ADMIN_PASS = "Patrick2026@####";
+// Admin credentials from config (env vars)
+$ADMIN_USER = ADMIN_USER;
+$ADMIN_PASS = ADMIN_PASS;
 
 $error = "";
 if ($_SERVER["REQUEST_METHOD"] === "POST") {

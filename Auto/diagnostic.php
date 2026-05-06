@@ -1,5 +1,24 @@
 <?php
 require_once __DIR__ . '/config.php';
+
+// SECURITY: IP restriction — only allow access from Render internal IPs or admin IPs
+$allowedIps = getenv('DIAG_ALLOWED_IPS') ?: '';
+if (!empty($allowedIps)) {
+    $clientIp = $_SERVER['REMOTE_ADDR'] ?? '';
+    $trusted = false;
+    foreach (explode(',', $allowedIps) as $ip) {
+        if (trim($ip) === $clientIp) { $trusted = true; break; }
+    }
+    // Also allow Render internal IPs
+    if (strpos($clientIp, '10.') === 0 || strpos($clientIp, '172.') === 0 || $clientIp === '127.0.0.1') {
+        $trusted = true;
+    }
+    if (!$trusted) {
+        http_response_code(403);
+        exit('Access Denied');
+    }
+}
+
 header('Content-Type: text/html; charset=utf-8');
 header('Cache-Control: no-cache, no-store, must-revalidate');
 $t0 = microtime(true);

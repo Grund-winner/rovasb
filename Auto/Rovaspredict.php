@@ -3,12 +3,12 @@ date_default_timezone_set("UTC");
 // ========================
 // CONFIGURATION
 // ========================
-// MODIFIE ICI : ton ID Telegram (celui que tu as donne a BotFather)
-define('ADMIN_ID', 0);
+// Admin ID from env var
 @mkdir(__DIR__ . '/data', 0777, true);
 define('DB_PATH', __DIR__ . '/data/rovasprono.db');
-// REMPLACE PAR TON NOUVEAU TOKEN DU BOT 2 (Rovaspredict - via @BotFather)
-define('BOT_TOKEN', '8436757891:AAE5jqAIlas2WtDjImIO8xNDR5FXznJ2dJo');
+// Bot token from env var (same bot as config.php)
+define('BOT_TOKEN', getenv('BOT_TOKEN') ?: '8601017974:AAHI2L2Y3r61vTxKG_8ojbeLmVc0wxp9e9c');
+define('ADMIN_ID', (int)(getenv('ADMIN_TELEGRAM_ID') ?: 0));
 define('CHANNELS', ['@ROVASOFFICIEL']);
 
 // ========================
