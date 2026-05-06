@@ -557,7 +557,7 @@ function runMain($chatId, $userId) {
         ]
     ];
 
-    sendPhoto($chatId, "https://i.ibb.co/KjP5xMN6/d1c356cc-e178-4238-ad66-1841f4664a51.jpg", $t['main_menu'], $keyboard);
+    sendPhoto($chatId, new CURLFile(__DIR__ . '/menu.png', 'image/png'), $t['main_menu'], $keyboard);
 }
 
 function handleRegistration($chatId, $userId) {
