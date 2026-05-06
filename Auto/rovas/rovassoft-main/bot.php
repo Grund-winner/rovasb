@@ -32,6 +32,8 @@ function fetchCrashHistory($token) {
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
         CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 10,
+        CURLOPT_CONNECTTIMEOUT => 5,
         CURLOPT_HTTPHEADER => [
             "auth-token: {$token}",
             "Content-Type: application/json"

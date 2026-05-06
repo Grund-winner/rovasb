@@ -18,7 +18,6 @@ try {
     $db = new PDO('sqlite:' . DB_PATH);
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     
-    // Create users table with enhanced fields
     $db->exec("CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY,
         username TEXT,
@@ -34,7 +33,6 @@ try {
         win_id TEXT
     )");
     
-    // Create logs table
     $db->exec("CREATE TABLE IF NOT EXISTS logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
@@ -46,7 +44,7 @@ try {
 }
 
 // ========================
-// HELPER FUNCTIONS
+// HELPER FUNCTIONS (optimized with curl + timeout)
 // ========================
 function getUser(int $userId): ?array {
     global $db;
@@ -86,8 +84,24 @@ function logAction(int $userId, string $action): void {
     $stmt->execute([':user_id' => $userId, ':action' => $action]);
 }
 
+// Telegram API via curl with timeout (replaces file_get_contents)
+function telegramApiCall(string $method, array $data): ?array {
+    $url = "https://api.telegram.org/bot" . BOT_TOKEN . "/$method";
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL => $url,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => http_build_query($data),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 10,
+        CURLOPT_CONNECTTIMEOUT => 5
+    ]);
+    $response = curl_exec($ch);
+    curl_close($ch);
+    return $response ? json_decode($response, true) : null;
+}
+
 function sendMessage(int $chatId, string $text, string $parseMode = 'HTML', ?array $replyMarkup = null, bool $disablePreview = false): void {
-    $url = "https://api.telegram.org/bot".BOT_TOKEN."/sendMessage";
     $data = [
         'chat_id' => $chatId,
         'text' => $text,
@@ -99,78 +113,39 @@ function sendMessage(int $chatId, string $text, string $parseMode = 'HTML', ?arr
         $data['reply_markup'] = json_encode($replyMarkup);
     }
     
-    $options = [
-        'http' => [
-            'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
-            'method'  => 'POST',
-            'content' => http_build_query($data)
-        ]
-    ];
-    
-    $context = stream_context_create($options);
-    file_get_contents($url, false, $context);
+    telegramApiCall('sendMessage', $data);
 }
 
 function answerCallback(string $callbackId, string $text, bool $showAlert = false): void {
-    $url = "https://api.telegram.org/bot".BOT_TOKEN."/answerCallbackQuery";
     $data = [
         'callback_query_id' => $callbackId,
         'text' => $text,
         'show_alert' => $showAlert
     ];
     
-    $options = [
-        'http' => [
-            'method'  => 'POST',
-            'content' => http_build_query($data)
-        ]
-    ];
-    
-    $context = stream_context_create($options);
-    file_get_contents($url, false, $context);
+    telegramApiCall('answerCallbackQuery', $data);
 }
 
 function deleteMessage(int $chatId, int $messageId): void {
-    $url = "https://api.telegram.org/bot".BOT_TOKEN."/deleteMessage";
-    $data = ['chat_id' => $chatId, 'message_id' => $messageId];
-    
-    $options = [
-        'http' => [
-            'method'  => 'POST',
-            'content' => http_build_query($data)
-        ]
-    ];
-    
-    $context = stream_context_create($options);
-    file_get_contents($url, false, $context);
+    telegramApiCall('deleteMessage', [
+        'chat_id' => $chatId,
+        'message_id' => $messageId
+    ]);
 }
 
 function getChatMemberStatus(string $channel, int $userId): string {
-    $url = "https://api.telegram.org/bot".BOT_TOKEN."/getChatMember";
-    $data = [
+    $result = telegramApiCall('getChatMember', [
         'chat_id' => $channel,
         'user_id' => $userId
-    ];
+    ]);
     
-    $options = [
-        'http' => [
-            'method'  => 'POST',
-            'content' => http_build_query($data)
-        ]
-    ];
-    
-    $context = stream_context_create($options);
-    $response = file_get_contents($url, false, $context);
-    $data = json_decode($response, true);
-    
-    return $data['result']['status'] ?? 'left';
+    return $result['result']['status'] ?? 'left';
 }
 
 // ========================
 // COMMAND HANDLERS
 // ========================
 function handleStart(int $userId, array $userData): void {
-    // Create/update user record
     $user = getUser($userId) ?? [
         'id' => $userId,
         'username' => $userData['username'] ?? '',
@@ -180,7 +155,6 @@ function handleStart(int $userId, array $userData): void {
     ];
     saveUser($user);
     
-    // Send welcome message
     $keyboard = [
         'inline_keyboard' => [
             [['text' => "✅ Rejoindre le canal", 'url' => "https://t.me/ROVASOFFICIEL"]],
@@ -202,13 +176,11 @@ function handleP1(int $userId, array $callback): void {
     $user = getUser($userId);
     if (!$user) return;
     
-    // Check if banned
     if ($user['is_banned']) {
         sendMessage($userId, "*Il vous est interdit d'utiliser le bot ❌*", 'Markdown');
         return;
     }
     
-    // Check channel subscriptions
     $allSubscribed = true;
     foreach (CHANNELS as $channel) {
         $status = getChatMemberStatus($channel, $userId);
@@ -218,19 +190,15 @@ function handleP1(int $userId, array $callback): void {
         }
     }
     
-    // Process based on subscription status
     if ($allSubscribed) {
-        // Update user state and proceed
         $user['state'] = 'verified';
         saveUser($user);
         handleP2($userId);
         
-        // Answer callback
         if (isset($callback['id'])) {
             answerCallback($callback['id'], "😉 Vous êtes autorisé(e)s Maintenant", true);
         }
     } else {
-        // Not subscribed
         if (isset($callback['id'])) {
             answerCallback($callback['id'], "❌😓Oups vous devez forcément rejoindre le canal", true);
         }
@@ -263,7 +231,6 @@ function handleSignalPremium(int $userId): void {
     $user = getUser($userId);
     if (!$user) return;
     
-    // Check balance status
     $balance = $user['balance'];
     $formattedBalance = number_format($balance, 2);
     
@@ -272,7 +239,6 @@ function handleSignalPremium(int $userId): void {
     } elseif ($formattedBalance == "1.50") {
         handleSectio1($userId);
     } else {
-        // Reset balance and start verification
         $user['balance'] = 0.0;
         saveUser($user);
         handleCheckSubscription($userId);
@@ -285,7 +251,6 @@ function handleSectio1(int $userId): void {
     $user = getUser($userId);
     if (!$user) return;
     
-    // Rate limiting check
     $now = time();
     if ($user['last_run_at'] && ($now - $user['last_run_at']) < 180) {
         $waitTime = 3 - ceil(($now - $user['last_run_at']) / 60);
@@ -293,18 +258,14 @@ function handleSectio1(int $userId): void {
         return;
     }
     
-    // Update last run time
     $user['last_run_at'] = $now;
     saveUser($user);
     
-    // Generate prediction times
     $time1 = date('H:i', $now + 120);
     $time2 = date('H:i', $now + 180);
-    // Generate coefficients
     $coefficient1 = number_format(mt_rand(400, 600) / 100, 2);
     $coefficient2 = number_format(mt_rand(1000, 2300) / 100, 2);
     
-    // Format message
     $message = <<<MSG
 <b><u>LUCKY JET PREDICTION</u></b>
 ┏━━━━━━━━━━━━━
@@ -328,7 +289,6 @@ function handleCheckSubscription(int $userId): void {
     $user = getUser($userId);
     if (!$user) return;
     
-    // Language detection
     $lang = $user['language'] ?? 'en';
     $messages = [
         'fr' => [
@@ -343,11 +303,9 @@ function handleCheckSubscription(int $userId): void {
         ]
     ];
     
-    // Set user state for ID input
     $user['state'] = 'ANA';
     saveUser($user);
     
-    // Send appropriate message
     if ($user['balance'] == 0.0) {
         sendMessage($userId, $messages[$lang]['enter_id'], 'Markdown');
     } elseif (number_format($user['balance'], 2) == "1.20") {
@@ -370,17 +328,14 @@ function handleAdminRef(int $adminId, string $command, string $targetUserId): vo
         return;
     }
     
-    // Reset target user's balance
-    $targetUser = getUser($targetUserId);
+    $targetUser = getUser((int)$targetUserId);
     if ($targetUser) {
         $targetUser['balance'] = 0.0;
         saveUser($targetUser);
     }
     
-    // Notify target user
-    sendMessage($targetUserId, "❌ Inscris-toi avec le code ROVAS, puis recharge ton compte. Ensuite, envoie ton ID au bot pour l'activer ✅.\nSi ça ne marche pas, clique sur 👉 /start pour réessayer.");
+    sendMessage((int)$targetUserId, "❌ Inscris-toi avec le code ROVAS, puis recharge ton compte. Ensuite, envoie ton ID au bot pour l'activer ✅.\nSi ça ne marche pas, clique sur 👉 /start pour réessayer.");
     
-    // Notify admin
     sendMessage($adminId, "* 🤴 User ID : $targetUserId\n\n💫 STATUT : Non à approuver*", 'Markdown');
     
     logAction($adminId, "admin_ref_command: $targetUserId");
@@ -390,13 +345,11 @@ function handleAdminNotification(int $userId, string $winId): void {
     $user = getUser($userId);
     if (!$user) return;
     
-    // Save WIN ID
     $user['win_id'] = $winId;
     $user['state'] = 'pending';
     $user['balance'] = 1.20;
     saveUser($user);
     
-    // Notify admin
     $adminMessage = "📝 Nouvelle demande de vérification\n\n"
         . "👤 User: @{$user['username']} ({$user['id']})\n"
         . "🏷️ WIN ID: $winId\n\n"
@@ -405,7 +358,6 @@ function handleAdminNotification(int $userId, string $winId): void {
     
     sendMessage(ADMIN_ID, $adminMessage);
     
-    // Notify user
     sendMessage(
         $userId,
         "✅ Votre ID 1win ($winId) a été enregistré avec succès.\n"
@@ -419,25 +371,22 @@ function handleAdminNotification(int $userId, string $winId): void {
 function handleAdminApprove(int $adminId, string $targetUserId): void {
     if ($adminId != ADMIN_ID) return;
     
-    $targetUser = getUser($targetUserId);
+    $targetUser = getUser((int)$targetUserId);
     if (!$targetUser) {
         sendMessage($adminId, "Utilisateur introuvable.");
         return;
     }
     
-    // Approve user
     $targetUser['balance'] = 1.50;
     saveUser($targetUser);
     
-    // Notify user
     sendMessage(
-        $targetUserId,
+        (int)$targetUserId,
         "🎉 Votre compte a été vérifié avec succès !\n"
         . "Vous pouvez maintenant accéder aux signaux premium.\n\n"
         . "Cliquez sur 'Signal premium 🥷' pour commencer."
     );
     
-    // Notify admin
     sendMessage($adminId, "✅ Utilisateur {$targetUser['id']} approuvé avec succès !");
     
     logAction($adminId, "admin_approve: $targetUserId");
@@ -464,7 +413,6 @@ $update = json_decode(file_get_contents('php://input'), true);
 if (!$update) exit;
 
 try {
-    // Handle callback queries
     if (isset($update['callback_query'])) {
         $callback = $update['callback_query'];
         $userId = $callback['from']['id'];
@@ -476,13 +424,11 @@ try {
                 break;
         }
     }
-    // Handle regular messages
     elseif (isset($update['message']['text'])) {
         $message = $update['message'];
         $userId = $message['from']['id'];
         $text = trim($message['text']);
         
-        // Get or create user
         $user = getUser($userId);
         if (!$user) {
             $user = [
@@ -495,7 +441,6 @@ try {
             saveUser($user);
         }
         
-        // Handle commands
         switch ($text) {
             case '/start':
             case '/ferma':
@@ -521,16 +466,13 @@ try {
                 break;
                 
             default:
-                // Handle state-based commands
                 if ($user['state'] === 'ANA') {
-                    // Handle 1win ID processing
                     if (!preg_match('/^\d{8,9}$/', $text)) {
                         handleRef0($userId);
                     } else {
                         handleAdminNotification($userId, $text);
                     }
                 }
-                // Handle admin commands
                 elseif (strpos($text, '/REF_') === 0 && $userId == ADMIN_ID) {
                     $parts = explode('_', $text);
                     handleAdminRef($userId, $parts[0], $parts[1] ?? '');

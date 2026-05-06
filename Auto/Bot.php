@@ -1,54 +1,73 @@
 <?php
 require_once 'config.php';
 
-// Initialize PostgreSQL
+// ========================
+// OPTIMIZED DB INIT (runs once per process)
+// ========================
+$_bot_tables_ready = false;
+
 function initDB() {
-    $db = getDB();
-    $db->exec("CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        telegram_id BIGINT,
-        username TEXT,
-        first_name TEXT,
-        last_name TEXT,
-        one_win_user_id TEXT,
-        is_registered BOOLEAN DEFAULT FALSE,
-        is_deposited BOOLEAN DEFAULT FALSE,
-        deposit_amount NUMERIC DEFAULT 0,
-        language TEXT DEFAULT 'en',
-        last_message_id INTEGER,
-        registered_at TIMESTAMPTZ,
-        deposited_at TIMESTAMPTZ,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-    )");
+    global $_bot_tables_ready;
+    if ($_bot_tables_ready) return;
 
-    $db->exec("CREATE TABLE IF NOT EXISTS access_codes (
-        id SERIAL PRIMARY KEY,
-        code TEXT NOT NULL,
-        telegram_id BIGINT,
-        used BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-    )");
+    try {
+        $db = getDB();
+        $db->exec("CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            telegram_id BIGINT,
+            username TEXT,
+            first_name TEXT,
+            last_name TEXT,
+            one_win_user_id TEXT,
+            is_registered BOOLEAN DEFAULT FALSE,
+            is_deposited BOOLEAN DEFAULT FALSE,
+            deposit_amount NUMERIC DEFAULT 0,
+            language TEXT DEFAULT 'en',
+            last_message_id INTEGER,
+            registered_at TIMESTAMPTZ,
+            deposited_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )");
 
-    $db->exec("CREATE TABLE IF NOT EXISTS bot_sessions (
-        bot_type TEXT NOT NULL,
-        admin_id BIGINT NOT NULL,
-        action TEXT,
-        step INTEGER,
-        temp_data TEXT,
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-    )");
+        $db->exec("CREATE TABLE IF NOT EXISTS access_codes (
+            id SERIAL PRIMARY KEY,
+            code TEXT NOT NULL,
+            telegram_id BIGINT,
+            used BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )");
+
+        $db->exec("CREATE TABLE IF NOT EXISTS bot_sessions (
+            bot_type TEXT NOT NULL,
+            admin_id BIGINT NOT NULL,
+            action TEXT,
+            step INTEGER,
+            temp_data TEXT,
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )");
+    } catch (Exception $e) {
+        // Tables likely already exist, continue
+    }
+
+    $_bot_tables_ready = true;
 }
 
 initDB();
 
-// Helper functions
-function getUserByTelegramId($telegramId) {
+// ========================
+// OPTIMIZED DB HELPERS (single query per user)
+// ========================
+function getUserRow($telegramId) {
     $db = getDB();
     $stmt = $db->prepare("SELECT * FROM users WHERE telegram_id = :tid");
     $stmt->bindValue(':tid', $telegramId, PDO::PARAM_INT);
     $stmt->execute();
     return $stmt->fetch();
+}
+
+function getUserByTelegramId($telegramId) {
+    return getUserRow($telegramId);
 }
 
 function saveUserData($telegramId, $key, $value) {
@@ -80,20 +99,26 @@ function saveUserData($telegramId, $key, $value) {
 function getUserData($telegramId, $key) {
     $user = getUserByTelegramId($telegramId);
     if (!$user) return null;
-    // Convert boolean fields
     if (($key === 'is_registered' || $key === 'is_deposited') && isset($user[$key])) {
         return $user[$key] ? 'yes' : 'no';
     }
     return $user[$key] ?? null;
 }
 
+// ========================
+// TELEGRAM API (with timeout)
+// ========================
 function telegramRequest($method, $data) {
     $url = "https://api.telegram.org/bot" . TOKEN . "/$method";
     $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt_array($ch, [
+        CURLOPT_URL => $url,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $data,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 10,
+        CURLOPT_CONNECTTIMEOUT => 5
+    ]);
     $response = curl_exec($ch);
     curl_close($ch);
     return json_decode($response, true);
@@ -165,7 +190,9 @@ function checkMembership($userId) {
            in_array($response['result']['status'], ['member', 'administrator', 'creator']);
 }
 
-// Language dictionaries
+// ========================
+// LANGUAGE DICTIONARIES
+// ========================
 $step1_texts = [
     "en" => "⚠️ Error: Registration not completed!\n\n✦ Please enter the promo code <b>ROVAS</b> during registration.\n\n● Once registration is complete, you will receive an automatic notification from the bot.",
     "hi" => "⚠️ त्रुटि: पंजीकरण पूरा नहीं हुआ!\n\n✦ कृपया पंजीकरण के दौरान प्रोमो कोड <b>ROVAS</b> दर्ज करें।\n\n● पंजीकरण पूरा होते ही, आपको बॉट से स्वत: सूचना प्राप्त होगी।",
@@ -228,7 +255,9 @@ $main_menu_translations = [
     "fr" => ["main_menu" => "Menu principal :", "registration" => "📱 Inscription", "instruction" => "📚 Instruction", "choose_lang" => "🌐 Choisir la langue", "get_signal" => "⚜ OBTENIR LE SIGNAL ⚜", "account_status" => "✅ État du compte", "back" => "🔙 Retour"]
 ];
 
-// Handle webhook events from Rovaspost.php
+// ========================
+// WEBHOOK EVENTS (from Rovaspost.php)
+// ========================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] === 'webhook') {
     $input = json_decode(file_get_contents('php://input'), true);
 
@@ -242,8 +271,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
 
     if ($event && $tgid) {
         if ($event === 'registration') {
-            $isRegistered = getUserData($tgid, 'is_registered');
-            if ($isRegistered === 'yes') {
+            $user = getUserRow($tgid);
+            if ($user && $user['is_registered']) {
                 http_response_code(200);
                 exit('User already registered');
             }
@@ -258,7 +287,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
 
             // Register user in PostgreSQL
             $db = getDB();
-            $stmt = $db->prepare("INSERT INTO users (telegram_id, is_registered, registered_at, updated_at, one_win_user_id) 
+            $stmt = $db->prepare("INSERT INTO users (telegram_id, is_registered, registered_at, updated_at, one_win_user_id)
                                   VALUES (:tid, TRUE, NOW(), NOW(), :winid)
                                   ON CONFLICT DO NOTHING");
             $stmt->bindValue(':tid', $tgid, PDO::PARAM_INT);
@@ -270,12 +299,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
             $stmt->bindValue(':tid', $tgid, PDO::PARAM_INT);
             $stmt->execute();
 
-            $lang = getUserData($tgid, 'language') ?: 'en';
+            $user = getUserRow($tgid);
+            $lang = ($user && $user['language']) ? $user['language'] : 'en';
             $message = $step2_texts[$lang] ?? $step2_texts['en'];
 
             $keyboard = [
                 'inline_keyboard' => [
-                    [['text' => "💰 Deposit", 'url' => "https://one-vv908.com/?open=register&p=583j&sub1=$tgid"]],
+                    [['text' => "💰 Deposit", 'url' => "https://one-vv908.com/?open=deposit&p=583j&sub1=$tgid"]],
                     [['text' => "⬅️ Back to Main Menu", 'callback_data' => "main"]]
                 ]
             ];
@@ -283,14 +313,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
             sendPhoto($tgid, "https://i.ibb.co/zWgnCxLB/IMG-20250812-102227-999.jpg", $message, $keyboard);
         }
         elseif ($event === 'deposit') {
-            $isDeposit = getUserData($tgid, 'is_deposited');
-            if ($isDeposit === 'yes') {
+            $user = getUserRow($tgid);
+            if ($user && $user['is_deposited']) {
                 http_response_code(200);
                 exit('User already made a deposit');
             }
 
-            $isRegistered = getUserData($tgid, 'is_registered');
-            if ($isRegistered !== 'yes') {
+            if (!$user || !$user['is_registered']) {
                 http_response_code(400);
                 exit('User must register before making a deposit');
             }
@@ -311,7 +340,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
             $stmt->bindValue(':tid', $tgid, PDO::PARAM_INT);
             $stmt->execute();
 
-            $lang = getUserData($tgid, 'language') ?: 'en';
+            $lang = ($user && $user['language']) ? $user['language'] : 'en';
             $message = $deposit_success_texts[$lang] ?? $deposit_success_texts['en'];
             $message = str_replace(['{amount}', '{transactionid}'], [$amount, $transactionid], $message);
 
@@ -335,7 +364,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     }
 }
 
-// Verify webhook secret token from Telegram
+// ========================
+// TELEGRAM WEBHOOK SECRET VERIFICATION
+// ========================
 if (isset($_SERVER['HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN'])) {
     if ($_SERVER['HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN'] !== WEBHOOK_SECRET) {
         http_response_code(403);
@@ -343,7 +374,9 @@ if (isset($_SERVER['HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN'])) {
     }
 }
 
-// Handle Telegram updates
+// ========================
+// HANDLE TELEGRAM UPDATES
+// ========================
 $update = json_decode(file_get_contents('php://input'), true);
 
 if (json_last_error() !== JSON_ERROR_NONE) {
@@ -359,7 +392,7 @@ if (isset($update['message'])) {
     // Save user info on first interaction
     if ($text && strpos($text, '/start') === 0) {
         $db = getDB();
-        $stmt = $db->prepare("INSERT INTO users (telegram_id, username, first_name, last_name, language, updated_at) 
+        $stmt = $db->prepare("INSERT INTO users (telegram_id, username, first_name, last_name, language, updated_at)
                               VALUES (:tid, :uname, :fname, :lname, :lang, NOW())
                               ON CONFLICT DO NOTHING");
         $stmt->bindValue(':tid', $userId, PDO::PARAM_INT);
@@ -372,7 +405,8 @@ if (isset($update['message'])) {
 
     if (strpos($text, '/start') === 0) {
         if (checkMembership($userId)) {
-            $lang = getUserData($userId, 'language');
+            $user = getUserRow($userId);
+            $lang = $user['language'] ?? null;
             if ($lang) {
                 runMain($chatId, $userId);
             } else {
@@ -415,7 +449,8 @@ elseif (isset($update['callback_query'])) {
                 if (checkMembership($userId)) {
                     answerCallbackQuery($callbackId, "✅ Joined");
                     deleteMessage($chatId, $messageId);
-                    $lang = getUserData($userId, 'language');
+                    $user = getUserRow($userId);
+                    $lang = $user['language'] ?? null;
                     if ($lang) {
                         runMain($chatId, $userId);
                     } else {
@@ -435,7 +470,8 @@ elseif (isset($update['callback_query'])) {
             case 'instruction':
                 answerCallbackQuery($callbackId);
                 deleteMessage($chatId, $messageId);
-                $lang = getUserData($userId, 'language') ?: 'en';
+                $user = getUserRow($userId);
+                $lang = ($user && $user['language']) ? $user['language'] : 'en';
                 $text = $instructions_translations[$lang] ?? $instructions_translations['en'];
                 $keyboard = ['inline_keyboard' => [[['text' => "🔙 Back", 'callback_data' => "main"]]]];
                 // Send instruction video (FR or other languages)
@@ -474,7 +510,9 @@ elseif (isset($update['callback_query'])) {
     }
 }
 
-// Command handlers
+// ========================
+// COMMAND HANDLERS (OPTIMIZED - single DB query)
+// ========================
 function showLanguageSelection($chatId) {
     $keyboard = [
         'inline_keyboard' => [
@@ -492,11 +530,13 @@ function showLanguageSelection($chatId) {
 function runMain($chatId, $userId) {
     global $main_menu_translations;
 
-    $lang = getUserData($userId, 'language') ?: 'en';
+    // Single DB query instead of 3
+    $user = getUserRow($userId);
+    $lang = ($user && $user['language']) ? $user['language'] : 'en';
     $t = $main_menu_translations[$lang] ?? $main_menu_translations['en'];
 
-    $isRegistered = getUserData($userId, 'is_registered');
-    $isDeposit = getUserData($userId, 'is_deposited');
+    $isRegistered = ($user && $user['is_registered']) ? 'yes' : 'no';
+    $isDeposit = ($user && $user['is_deposited']) ? 'yes' : 'no';
 
     $registrationButton = ['text' => $t['registration'], 'callback_data' => 'registration'];
     if ($isRegistered === 'yes' && $isDeposit === 'yes') {
@@ -517,15 +557,17 @@ function runMain($chatId, $userId) {
         ]
     ];
 
-    sendPhoto($chatId, "https://i.ibb.co/qLjsWV2W/IMG-20250812-091057-129.jpg", $t['main_menu'], $keyboard);
+    sendPhoto($chatId, "https://i.ibb.co/KjP5xMN6/d1c356cc-e178-4238-ad66-1841f4664a51.jpg", $t['main_menu'], $keyboard);
 }
 
 function handleRegistration($chatId, $userId) {
     global $step1_texts, $step2_texts;
 
-    $lang = getUserData($userId, 'language') ?: 'en';
-    $isRegistered = getUserData($userId, 'is_registered');
-    $isDeposit = getUserData($userId, 'is_deposited');
+    // Single DB query instead of 2
+    $user = getUserRow($userId);
+    $lang = ($user && $user['language']) ? $user['language'] : 'en';
+    $isRegistered = ($user && $user['is_registered']) ? 'yes' : 'no';
+    $isDeposit = ($user && $user['is_deposited']) ? 'yes' : 'no';
 
     if ($isRegistered !== 'yes') {
         $keyboard = [
@@ -559,7 +601,8 @@ function handleRegistration($chatId, $userId) {
 function handleAccountStatus($chatId, $userId) {
     global $account_status_texts;
 
-    $lang = getUserData($userId, 'language') ?: 'en';
+    $user = getUserRow($userId);
+    $lang = ($user && $user['language']) ? $user['language'] : 'en';
     $text = $account_status_texts[$lang] ?? $account_status_texts['en'];
 
     $keyboard = [
@@ -574,7 +617,8 @@ function handleAccountStatus($chatId, $userId) {
 function sendGetSignalButton($chatId, $userId) {
     global $main_menu_translations;
 
-    $lang = getUserData($userId, 'language') ?: 'en';
+    $user = getUserRow($userId);
+    $lang = ($user && $user['language']) ? $user['language'] : 'en';
     $t = $main_menu_translations[$lang] ?? $main_menu_translations['en'];
 
     $keyboard = [
