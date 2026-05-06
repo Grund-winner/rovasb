@@ -18,62 +18,9 @@ document.addEventListener('DOMContentLoaded', () => {
     kenguImg.onload = () => console.log('✅ kengu.png found and preloaded');
     kenguImg.onerror = () => console.error('❌ kengu.png NOT FOUND - fix the file path!');
     
-    // Флаг для режима прыжков на платформы 20-100
+    // Anti-cheat: high multiplier mode removed for security
     let highMultiplierMode = false;
-    
-    // Создаем невидимую кнопку для прыжков к платформам 20-100
-    const secretButton = document.createElement('div');
-    secretButton.className = 'secret-button';
-    secretButton.style.position = 'fixed';
-    secretButton.style.left = '20px';
-    secretButton.style.bottom = '20px';
-    secretButton.style.width = '80px';
-    secretButton.style.height = '80px';
-    secretButton.style.zIndex = '100';
-    secretButton.style.cursor = 'pointer';
-    secretButton.style.opacity = '0'; // Делаем кнопку невидимой
-    
-    document.body.appendChild(secretButton);
-    
-    // Добавляем обработчик для включения режима прыжков к платформам 20-100
-    secretButton.addEventListener('click', () => {
-        highMultiplierMode = !highMultiplierMode;
-        
-        if (highMultiplierMode) {
-            alert('Включен режим прыжков на платформы 20-100x!');
-            console.log('Включен режим прыжков на платформы с коэффициентами 20-100');
-        } else {
-            alert('Режим прыжков на платформы 20-100x отключен');
-            console.log('Режим прыжков на платформы с коэффициентами 20-100 отключен');
-        }
-    });
-    
-    // Функция для прыжка к платформам с высокими коэффициентами (20-100)
-    function jumpToHighPlatform() {
-        if (isJumping) return;
-        
-        // Фильтруем платформы с коэффициентами от 20 до 100, которые не использовались
-        const highPlatforms = visiblePlatforms.filter(p => {
-            const coef = parseFloat(p.dataset.coefficient);
-            return coef >= 20 && coef <= 100 && !usedPlatforms.includes(p);
-        });
-        
-        if (highPlatforms.length === 0) {
-            console.log('Нет доступных платформ с коэффициентами 20-100');
-            resetGame();
-            return;
-        }
-        
-        // Выбираем случайную платформу из отфильтрованных
-        const randomIndex = Math.floor(Math.random() * highPlatforms.length);
-        const selectedPlatform = highPlatforms[randomIndex];
-        
-        console.log(`Прыжок к платформе с коэффициентом ${selectedPlatform.dataset.coefficient}`);
-        
-        // Прыгаем к выбранной платформе
-        jumpTo(selectedPlatform);
-    }
-    
+
     // Creating a modal window for coefficients
     const modal = document.createElement('div');
     modal.className = 'modal';
@@ -459,36 +406,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Reset last platform to generate new coefficient
         lastPlatform = null;
         
-        // Проверяем, активирован ли режим высоких коэффициентов
-        if (highMultiplierMode) {
-            console.log('🎯 Режим высоких коэффициентов: выбираем платформу 20-100x');
-            
-            // Фильтруем платформы с коэффициентами от 20 до 100, которые не использовались
-            const highPlatforms = visiblePlatforms.filter(p => {
-                const coef = parseFloat(p.dataset.coefficient);
-                return coef >= 20 && coef <= 100 && !usedPlatforms.includes(p);
-            });
-            
-            if (highPlatforms.length === 0) {
-                console.log('Нет доступных платформ с коэффициентами 20-100');
-                resetGame();
-                return;
-            }
-            
-            // Выбираем случайную платформу из отфильтрованных
-            const randomIndex = Math.floor(Math.random() * highPlatforms.length);
-            const selectedPlatform = highPlatforms[randomIndex];
-            
-            console.log(`Выбрана платформа с коэффициентом ${selectedPlatform.dataset.coefficient}`);
-            
-            // Запоминаем индекс целевой платформы
-            window.targetPlatformIndex = parseInt(selectedPlatform.dataset.index);
-            
-            // Прыгаем к выбранной платформе
-            jumpTo(selectedPlatform);
-            return;
-        }
-        
         // Select target platform with coef. 2, 3, 5, 10 - chance 30%, 30%, 20%, 20%
         const targetCoefficients = [2, 3, 5, 10];
         
@@ -563,33 +480,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (availablePlatforms.length === 0) {
             resetGame();
             return;
-        }
-
-        // Проверяем, активирован ли режим высоких коэффициентов
-        if (highMultiplierMode) {
-            // Фильтруем платформы с коэффициентами от 20 до 100
-            const highPlatforms = availablePlatforms.filter(p => {
-                const coef = parseFloat(p.dataset.coefficient);
-                return coef >= 20 && coef <= 100;
-            });
-            
-            if (highPlatforms.length > 0) {
-                // Выбираем случайную платформу с высоким коэффициентом
-                const randomIndex = Math.floor(Math.random() * highPlatforms.length);
-                const selectedPlatform = highPlatforms[randomIndex];
-                
-                console.log(`Прыжок на платформу с высоким коэффициентом: ${selectedPlatform.dataset.coefficient}x`);
-                
-                // Показываем модальное окно с коэффициентом
-                const coefficient = selectedPlatform.dataset.coefficient;
-                showModal(coefficient);
-                
-                // Прыгаем к выбранной платформе
-                jumpTo(selectedPlatform);
-                return;
-            } else {
-                console.log('Нет доступных платформ с коэффициентами 20-100 для случайного прыжка');
-            }
         }
 
         // Target coefficients with probabilities 30%, 30%, 20%, 20%

@@ -396,9 +396,8 @@
         const { get: _get } = await import("https://cdn.jsdelivr.net/npm/lodash-es@4.17.21/lodash.min.js");
 
         // ── API config ───────────────────────────────────────────────────────
-        const HISTORY_URL = "https://crash-gateway-grm-cr.gamedev-tech.cc/history";
-        const SESSION_ID = "c5198c84-ca41-4ede-9720-e6ab60f15a61";
-        const CUSTOMER_ID = "077dee8d-c923-4c02-9bee-757573662e69";
+        // Session and customer IDs are now fetched from server-side proxy
+        const HISTORY_URL = "../bot.php";
 
         // ── State ────────────────────────────────────────────────────────────
         let lastSeenId = null;
@@ -510,15 +509,9 @@
         // ── Fetch from API ───────────────────────────────────────────────────
         async function fetchHistory() {
             try {
-                const res = await fetch(HISTORY_URL, {
-                    headers: {
-                        "accept": "application/json",
-                        "session-id": SESSION_ID,
-                        "customer-id": CUSTOMER_ID
-                    }
-                });
+                const res = await fetch(HISTORY_URL);
                 const data = await res.json();
-                if (!Array.isArray(data) || !data.length) return;
+                if (!data || data.status === 'error') return;
 
                 const latest = data[0];
                 if (latest?.id === lastSeenId) return;

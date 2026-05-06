@@ -4,8 +4,14 @@
  * Appelle crash gateway + gpt.php (IA gratuit)
  */
 
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Headers: *");
+$allowedOrigin = 'https://rovasb-app.onrender.com';
+$requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if ($requestOrigin !== $allowedOrigin) {
+    http_response_code(403);
+    exit('Forbidden origin');
+}
+header("Access-Control-Allow-Origin: " . $allowedOrigin);
+header("Access-Control-Allow-Headers: Content-Type");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Content-Type: application/json; charset=utf-8");
 
@@ -14,7 +20,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { exit(0); }
 /* =========================================
    CRASH GATEWAY AUTH + HISTORY
    ========================================= */
-$authToken = "077dee8d-c923-4c02-9bee-757573662e69";
+$authToken = getenv('CRASH_GATEWAY_TOKEN') ?: '';
+if (empty($authToken)) {
+    echo json_encode(["error" => "Crash gateway token not configured", "status" => "error"]);
+    exit;
+}
 
 function fetchCrashHistory($token) {
     // Auth
