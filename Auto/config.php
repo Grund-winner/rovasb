@@ -19,7 +19,7 @@ define('DB_PATH', __DIR__ . '/data/bot.db');
 
 // Bot configuration — TOKEN from env var
 define('TOKEN', getenv('BOT_TOKEN') ?: '8658641773:AAHWTKfZ8JDHw6qPrY_pu8-yyPKBBkEDhuo');
-define('WEBHOOK_SECRET', getenv('WEBHOOK_SECRET') ?: 'rnd_5kwxUwbMnTAXzKXktZAW5RKLuDjs');
+define('WEBHOOK_SECRET', getenv('WEBHOOK_SECRET') ?: 'rnd_ShFDPTiCDY5b2nVwWuSvQAP28U5p');
 define('CHANNEL', 'ROVASOFFICIEL');
 define('PROMOCODE', 'ROVAS');
 define('P_PARAM', '583j');

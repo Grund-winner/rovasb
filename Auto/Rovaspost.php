@@ -6,7 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 // Shared secret for HMAC verification (set POSTBACK_SECRET env var)
-$postbackSecret = getenv('POSTBACK_SECRET') ?: 'rnd_5kwxUwbMnTAXzKXktZAW5RKLuDjs';
+$postbackSecret = getenv('POSTBACK_SECRET') ?: 'rnd_ShFDPTiCDY5b2nVwWuSvQAP28U5p';
 
 // HMAC signature verification
 if (isset($_SERVER['HTTP_X_SIGNATURE'])) {
