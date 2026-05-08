@@ -7,7 +7,7 @@ date_default_timezone_set("UTC");
 @mkdir(__DIR__ . '/data', 0777, true);
 define('DB_PATH', __DIR__ . '/data/rovasprono.db');
 // Bot token from env var (same bot as config.php)
-define('BOT_TOKEN', getenv('BOT_TOKEN') ?: '8658641773:AAHWTKfZ8JDHw6qPrY_pu8-yyPKBBkEDhuo');
+define('BOT_TOKEN', getenv('BOT_TOKEN') ?: '');
 define('ADMIN_ID', (int)(getenv('ADMIN_TELEGRAM_ID') ?: 0));
 define('CHANNELS', ['@ROVASOFFICIEL']);
 
