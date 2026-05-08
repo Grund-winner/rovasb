@@ -1,16 +1,41 @@
-# Protéger les fichiers sensibles - personne ne peut les lire
-<FilesMatch "\.(db|json|php|log)$">
-    # Autoriser PHP pour le fonctionnement du bot
-    <FilesMatch "^(Bot|config|index|admin|users|broadcast|broadcast_worker|Rovaspredict|Rovaspost|logout)\.php$">
-        Require all granted
-    </FilesMatch>
-    # Bloquer l'accès direct aux fichiers .db et .json
-    <FilesMatch "\.(db|json)$">
-        Require all denied
-    </FilesMatch>
+# ============================================
+# Auto/.htaccess — SECURITY HARDCENED
+# ============================================
+
+# Block dangerous HTTP methods
+<LimitExcept GET POST HEAD OPTIONS>
+    Require all denied
+</LimitExcept>
+
+# Disable directory listing
+Options -Indexes
+
+# Protect sensitive files
+<FilesMatch "\.(db|json|log|env|sql|bak|old)$">
+    Require all denied
 </FilesMatch>
 
-# Autoriser PHP partout
+# Deny access to config files
+<Files "config.php">
+    Require all denied
+</Files>
+
+# Allow only specific PHP entry points
 <Files "*.php">
     Require all granted
 </Files>
+
+# Security headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# Prevent script execution in data directory
+<Directory "data">
+    <FilesMatch "\.(php|phtml|pht|phps)$">
+        Require all denied
+    </FilesMatch>
+    Require all denied
+</Directory>

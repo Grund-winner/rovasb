@@ -1,0 +1,38 @@
+# ============================================
+# ROOT .htaccess — CRITICAL SECURITY
+# ============================================
+
+# Block dangerous HTTP methods (PUT, DELETE, PATCH, TRACE, CONNECT)
+# This prevents anyone from uploading files or deleting content via WebDAV
+<LimitExcept GET POST HEAD OPTIONS>
+    Require all denied
+</LimitExcept>
+
+# Disable directory listing
+Options -Indexes
+
+# Prevent access to hidden files (.env, .git, .htaccess, etc.)
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# Block access to sensitive file types
+<FilesMatch "\.(env|git|gitignore|gitattributes|md|sql|bak|old|swp|save|cfg|conf|ini|sh)$">
+    Require all denied
+</FilesMatch>
+
+# Security headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+</IfModule>
+
+# Prevent script execution in upload/data directories
+<DirectoryMatch "^.*(data|upload|tmp|cache).*$">
+    <FilesMatch "\.(php|php[0-9]|phtml|pht|phps)$">
+        Require all denied
+    </FilesMatch>
+</DirectoryMatch>

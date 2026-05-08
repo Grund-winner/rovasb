@@ -4,8 +4,15 @@
  * Appelle crash gateway + gpt.php (IA gratuit)
  */
 
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Headers: *");
+// CORS — restricted to Render domain only
+$allowedOrigin = 'https://rovasb-app.onrender.com';
+$requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if ($requestOrigin && $requestOrigin !== $allowedOrigin) {
+    http_response_code(403);
+    exit('Forbidden origin');
+}
+header("Access-Control-Allow-Origin: " . $allowedOrigin);
+header("Access-Control-Allow-Headers: Content-Type");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Content-Type: application/json; charset=utf-8");
 
@@ -20,6 +27,8 @@ function fetchCrashHistorySecure($authToken) {
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
         CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 10,
+        CURLOPT_CONNECTTIMEOUT => 5,
         CURLOPT_HTTPHEADER => [
             "auth-token: {$authToken}",
             "Content-Type: application/json"
@@ -50,7 +59,8 @@ function fetchCrashHistorySecure($authToken) {
     curl_setopt_array($ch, [
         CURLOPT_HTTPHEADER => $headers,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 15
+        CURLOPT_TIMEOUT => 10,
+        CURLOPT_CONNECTTIMEOUT => 5
     ]);
     $resp = curl_exec($ch);
     curl_close($ch);
@@ -103,7 +113,8 @@ function callGPT($message) {
         CURLOPT_POST => true,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POSTFIELDS => http_build_query(["prompt" => $message]),
-        CURLOPT_TIMEOUT => 35
+        CURLOPT_TIMEOUT => 15,
+        CURLOPT_CONNECTTIMEOUT => 5
     ]);
     $resp = curl_exec($ch);
     curl_close($ch);
@@ -113,9 +124,10 @@ function callGPT($message) {
 /* =========================================
    INPUT
    ========================================= */
-$authToken = $_GET['b'] ?? '';
+// Input — token from env var ONLY (no GET parameter exposure)
+$authToken = getenv('CRASH_GATEWAY_TOKEN') ?: '';
 if (!$authToken) {
-    echo json_encode(["error" => "Missing auth token"]);
+    echo json_encode(["error" => "Crash gateway token not configured", "status" => "error"]);
     exit;
 }
 
